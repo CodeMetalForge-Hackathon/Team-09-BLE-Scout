@@ -1,0 +1,23 @@
+[project]
+name = "roomscan"
+version = "0.1.0"
+description = "Walk a room with a laptop, map Bluetooth device clusters, and dispatch a rescue team to them."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "bleak>=0.22",
+    "numpy>=1.26",
+    "scipy>=1.11",
+    "aiohttp>=3.9",
+    "segno>=1.6",
+]
+
+[project.scripts]
+roomscan = "roomscan.__main__:main"
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

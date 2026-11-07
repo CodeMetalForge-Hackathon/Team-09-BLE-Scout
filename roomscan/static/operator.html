@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Roomscan Console</title>
+<style>
+  :root { --bg:#0e1217; --panel:#171c23; --line:#262e38; --text:#e7eaee; --muted:#8b96a3;
+          --accent:#3d9bff; --ok:#3ecf8e; --warn:#ffb020; --bad:#ff5a5a; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.45 -apple-system, system-ui, sans-serif; background:var(--bg); color:var(--text);
+         display:grid; grid-template-columns:1fr 380px; height:100vh; }
+  @media (max-width:900px) { body { grid-template-columns:1fr; height:auto; } #mapwrap { height:70vh; } }
+  #mapwrap { position:relative; padding:16px; min-height:0; }
+  canvas { width:100%; height:100%; display:block; cursor:crosshair; }
+  aside { background:var(--panel); border-left:1px solid var(--line); padding:16px; overflow:auto; }
+  h1 { font-size:17px; margin:0 0 2px; } h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:22px 0 8px; }
+  .sub { color:var(--muted); font-size:12px; }
+  label { display:inline-flex; flex-direction:column; font-size:12px; color:var(--muted); margin-right:8px; }
+  input, select { background:#0e1217; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:6px 8px; width:80px; font:inherit; }
+  select { width:auto; }
+  button { background:#232b35; color:var(--text); border:1px solid var(--line); border-radius:8px; padding:8px 12px; font:inherit; cursor:pointer; }
+  button:hover { border-color:var(--accent); }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
+  button.big { width:100%; padding:16px; font-size:17px; margin:8px 0; }
+  button.danger { border-color:var(--bad); color:var(--bad); }
+  kbd { font:11px ui-monospace, monospace; border:1px solid var(--line); border-bottom-width:2px; border-radius:4px; padding:0 4px; color:var(--muted); }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:end; margin:8px 0; }
+  .stat { display:inline-block; margin-right:16px; } .stat b { font-size:18px; display:block; }
+  .card { border:1px solid var(--line); border-radius:8px; padding:10px; margin-bottom:8px; }
+  .cl { border-left:4px solid var(--bad); } .cl.assigned { border-left-color:var(--warn); } .cl.cleared { border-left-color:var(--ok); opacity:.6; }
+  .pill { font-size:11px; padding:1px 7px; border-radius:99px; background:#232b35; color:var(--muted); }
+  .err { color:var(--bad); }
+  .hidden { display:none !important; }
+  #qr svg { width:132px; height:132px; border-radius:6px; }
+  .legend { position:absolute; left:28px; bottom:26px; font-size:12px; color:var(--muted); background:#0e1217cc; padding:6px 10px; border-radius:6px; }
+  #banner { position:absolute; left:50%; top:28px; transform:translateX(-50%); background:#0e1217dd; border:1px solid var(--line);
+            border-radius:12px; padding:10px 18px; font-size:18px; font-weight:600; text-align:center; pointer-events:none; }
+  #banner .huge { font-size:56px; line-height:1; display:block; }
+  #toast { position:absolute; right:28px; top:28px; background:var(--ok); color:#06261a; border-radius:8px; padding:6px 12px; font-weight:600; opacity:0; transition:opacity .3s; }
+  .near { display:flex; justify-content:space-between; font-size:12px; padding:2px 0; border-bottom:1px dashed var(--line); }
+  .bar { height:4px; background:var(--accent); border-radius:2px; margin-top:2px; }
+</style>
+</head>
+<body>
+<div id="mapwrap"><canvas id="map"></canvas>
+  <div id="banner" class="hidden"></div><div id="toast"></div>
+  <div class="legend">heat = likely device density · <span style="color:var(--bad)">◯</span> cluster · <span style="color:var(--accent)">●</span> pacer · thin line = where you were
+    <span id="truthToggle" class="hidden"> · <label style="display:inline"><input type="checkbox" id="showTruth" style="width:auto"> show true positions</label></span></div>
+</div>
+<aside>
+  <h1>Bluetooth Room Scan</h1>
+  <div class="sub" id="mode"></div>
+
+  <section id="p-setup">
+    <h2>1 · Room</h2>
+    <div class="sub">Stand in the corner by the door, facing into the room. <b>Width</b> runs along the wall to your right; <b>length</b> runs straight ahead. Pacing it out is fine (≈0.75 m per step).</div>
+    <div class="row">
+      <label>Width (m)<input id="w" type="number" step="0.5" min="1"></label>
+      <label>Length (m)<input id="l" type="number" step="0.5" min="1"></label>
+      <label>Lane gap (m)<input id="lane" type="number" step="0.25" min="0.5"></label>
+      <label>Pace (m/s)<input id="speed" type="number" step="0.1" min="0.1" max="2"></label>
+      <button onclick="applySetup()">Apply</button>
+    </div>
+    <h2>2 · Walk live</h2>
+    <div class="sub">Carry the laptop at chest height. Press Start, stand on point 1 during the countdown, then <b>keep up with the blue dot</b>. You'll hear a beep at each numbered point. The map builds as you walk.<br><br>
+      <kbd>Space</kbd> I'm at a numbered point (fixes drift) · click the map: I'm here · <kbd>P</kbd> pause · <kbd>−</kbd>/<kbd>+</kbd> pace</div>
+    <button class="primary big" onclick="startScan()">Start walking</button>
+  </section>
+
+  <section id="p-scan" class="hidden">
+    <h2>Walking</h2>
+    <div><span class="stat"><b id="eta">–</b>left</span><span class="stat"><b id="ndev">0</b>devices heard</span><span class="stat"><b id="nclust">0</b>clusters</span></div>
+    <div class="err" id="scanErr"></div>
+    <button class="primary big" onclick="pacer('at_waypoint')">I'm at a numbered point <kbd style="color:#fff">Space</kbd></button>
+    <div class="row">
+      <button id="pauseBtn" onclick="togglePause()">Pause <kbd>P</kbd></button>
+      <button onclick="nudge(-0.1)">Slower <kbd>−</kbd></button>
+      <span id="speedTxt" style="padding:8px 4px; font-weight:600">0.5 m/s</span>
+      <button onclick="nudge(0.1)">Faster <kbd>+</kbd></button>
+    </div>
+    <div class="row"><button class="danger" onclick="post('/api/finish')">Finish scan</button></div>
+    <div id="simnote" class="sub hidden">Simulation: a virtual person follows the dot, sometimes lagging behind it. Use the controls to see how corrections work.</div>
+    <h2>Close to you now</h2>
+    <div id="nearby" class="sub">–</div>
+  </section>
+
+  <section id="p-done" class="hidden">
+    <h2>Clusters</h2>
+    <div class="row">
+      <button class="primary" onclick="post('/api/auto-assign')">Auto-assign team</button>
+      <button onclick="if(confirm('Discard this scan and start again?')) applySetup()">New scan</button>
+    </div>
+    <div class="row">
+      <label>Path-loss n <input id="n" type="number" step="0.25" min="1.5" max="4.5"></label>
+      <label>Group within (m) <input id="link" type="number" step="0.25" min="0.25"></label>
+      <button onclick="post('/api/params', {n:+$('n').value, link_m:+$('link').value})">Re-analyse</button>
+    </div>
+    <div class="sub" id="saved"></div>
+  </section>
+  <div id="clusters"></div>
+  <div class="sub" id="devsummary"></div>
+
+  <h2>Rescue team</h2>
+  <div class="row" style="align-items:center"><div id="qr"></div>
+    <div class="sub">Team members scan this (same Wi-Fi) or open<br><b id="teamurl"></b></div></div>
+  <div id="team" class="sub">Nobody has joined yet.</div>
+</aside>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let S = null, fetchedAt = 0, view = null, setupLoaded = false, lastWp = null, lastCountdown = null;
+
+async function post(url, body) {
+  const r = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body || {})});
+  if (!r.ok) toast(await r.text(), true);
+  await refresh();
+  return r.ok;
+}
+const setupBody = () => ({width:+$('w').value, length:+$('l').value, lane:+$('lane').value, speed:+$('speed').value});
+function applySetup() { return post('/api/setup', setupBody()); }
+async function startScan() { audio(); if (await applySetup()) await post('/api/start'); }
+const pacer = (action, extra) => post('/api/pacer', {action, ...extra});
+function togglePause() { if (S?.pacer) pacer(S.pacer.paused ? 'resume' : 'pause'); }
+function nudge(dv) { if (S?.pacer) pacer('speed', {speed: Math.round((S.pacer.speed + dv) * 10) / 10}); }
+
+document.addEventListener('keydown', e => {
+  if (!S || S.phase !== 'scanning' || e.target.tagName === 'INPUT') return;
+  if (e.code === 'Space') { e.preventDefault(); pacer('at_waypoint').then(ok => ok && toast('Position fixed to nearest point')); }
+  else if (e.key === 'p' || e.key === 'P') togglePause();
+  else if (e.key === '+' || e.key === '=') nudge(0.1);
+  else if (e.key === '-' || e.key === '_') nudge(-0.1);
+});
+
+// ---------- sound ----------
+let actx = null;
+function audio() { try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); actx.resume(); } catch (e) {} }
+function beep(freq = 880, ms = 120) {
+  if (!actx) return;
+  const o = actx.createOscillator(), g = actx.createGain();
+  o.frequency.value = freq; g.gain.value = 0.15; o.connect(g); g.connect(actx.destination);
+  o.start(); o.stop(actx.currentTime + ms / 1000);
+}
+let toastTimer;
+function toast(msg, bad) {
+  const t = $('toast'); t.textContent = msg; t.style.background = bad ? 'var(--bad)' : 'var(--ok)'; t.style.opacity = 1;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.style.opacity = 0, 1800);
+}
+
+// ---------- path geometry (mirrors pacer.py) ----------
+function cumDist(w) { const c = [0]; for (let i = 1; i < w.length; i++) c.push(c[i-1] + Math.hypot(w[i][0]-w[i-1][0], w[i][1]-w[i-1][1])); return c; }
+function pointAt(w, c, d) {
+  d = Math.max(0, Math.min(d, c[c.length-1]));
+  for (let i = 1; i < w.length; i++) if (d <= c[i] || i === w.length - 1) {
+    const f = c[i] === c[i-1] ? 0 : (d - c[i-1]) / (c[i] - c[i-1]);
+    return [w[i-1][0] + f*(w[i][0]-w[i-1][0]), w[i-1][1] + f*(w[i][1]-w[i-1][1])];
+  }
+  return w[0];
+}
+function liveDist() {  // extrapolate between server polls so the dot glides smoothly
+  const p = S.pacer; if (!p) return 0;
+  const dt = (performance.now() - fetchedAt) / 1000;
+  if (p.paused || p.done) return p.d;
+  return Math.min(p.d + p.speed * Math.max(0, dt - p.countdown), p.total);
+}
+
+// ---------- map ----------
+const cv = $('map'), ctx = cv.getContext('2d');
+cv.addEventListener('click', e => {
+  if (!S || S.phase !== 'scanning' || !view) return;
+  const r = cv.getBoundingClientRect();
+  const x = (e.clientX - r.left - view.ox) / view.k, y = (view.oy - (e.clientY - r.top)) / view.k;
+  if (x < 0 || y < 0 || x > S.room.width || y > S.room.length) return;
+  pacer('at_point', {x, y}).then(ok => ok && toast(`Position fixed: (${x.toFixed(1)}, ${y.toFixed(1)})`));
+});
+
+function heatColor(t) {
+  const stops = [[14,18,23,0],[40,60,140,.55],[220,70,60,.75],[255,170,40,.85],[255,240,140,.95]];
+  const f = Math.min(Math.max(t,0),1) * (stops.length - 1), i = Math.floor(f), u = f - i;
+  const a = stops[i], b = stops[Math.min(i+1, stops.length-1)];
+  return `rgba(${a.map((v,j)=>Math.round(v+(b[j]-v)*u)).slice(0,3).join(',')},${a[3]+(b[3]-a[3])*u})`;
+}
+
+function draw() {
+  const dpr = devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
+  if (cv.width !== W*dpr || cv.height !== H*dpr) { cv.width = W*dpr; cv.height = H*dpr; }
+  ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,W,H);
+  if (!S) return;
+  const {width:rw, length:rl} = S.room, pad = 40;
+  const k = Math.min((W - 2*pad) / rw, (H - 2*pad) / rl);
+  const ox = (W - rw*k) / 2, oy = H - (H - rl*k) / 2;
+  view = {k, ox, oy};
+  const P = (x, y) => [ox + x*k, oy - y*k];
+  const line = (pts, color, width, dash) => {
+    if (pts.length < 2) return; ctx.setLineDash(dash || []); ctx.strokeStyle = color; ctx.lineWidth = width; ctx.beginPath();
+    pts.forEach((p,i) => { const [x,y] = P(p[0], p[1]); i ? ctx.lineTo(x,y) : ctx.moveTo(x,y); }); ctx.stroke(); ctx.setLineDash([]);
+  };
+
+  const res = S.result;
+  if (res && res.heat && res.heat.max > 0) {
+    const h = res.heat, c = h.cell * k;
+    for (let j = 0; j < h.ny; j++) for (let i = 0; i < h.nx; i++) {
+      const v = h.values[j*h.nx + i] / h.max; if (v < 0.04) continue;
+      const [x, y] = P(h.x0 + i*h.cell - h.cell/2, h.y0 + j*h.cell + h.cell/2);
+      ctx.fillStyle = heatColor(v); ctx.fillRect(x, y, c + .5, c + .5);
+    }
+  }
+  ctx.strokeStyle = '#2d3743'; ctx.lineWidth = 1;
+  for (let x = 1; x < rw; x++) line([[x,0],[x,rl]], '#222a33', 1);
+  for (let y = 1; y < rl; y++) line([[0,y],[rw,y]], '#222a33', 1);
+  ctx.strokeStyle = '#9aa6b2'; ctx.lineWidth = 2; ctx.strokeRect(ox, oy - rl*k, rw*k, rl*k);
+  ctx.fillStyle = '#9aa6b2'; ctx.font = '12px system-ui';
+  ctx.fillText('DOOR (0,0)', ox + 4, oy + 16);
+  ctx.fillText(`${rw} m →`, ox + rw*k - 44, oy + 16);
+  ctx.save(); ctx.translate(ox - 8, oy - rl*k + 40); ctx.rotate(-Math.PI/2); ctx.fillText(`← ${rl} m`, 0, 0); ctx.restore();
+
+  // planned path, with the part already covered by the pacer drawn solid
+  const wps = S.waypoints, cum = cumDist(wps), d = S.pacer ? liveDist() : 0;
+  line(wps, '#4a5663', 1.5, [4,5]);
+  if (S.pacer) {
+    const done = wps.filter((_, i) => cum[i] <= d); done.push(pointAt(wps, cum, d));
+    line(done, '#3d9bff55', 6);
+  }
+  wps.forEach((w,i) => {
+    const [x,y] = P(...w), passed = S.pacer && cum[i] <= d;
+    ctx.beginPath(); ctx.arc(x, y, 9, 0, 7);
+    ctx.fillStyle = passed ? '#1f3550' : '#1d242d'; ctx.fill(); ctx.strokeStyle = '#5b6875'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.fillStyle = '#8b96a3'; ctx.font = '10px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(i+1, x, y);
+  });
+  ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
+
+  // where we think you actually were (rewritten by corrections) + correction points
+  line(S.marks.map(m => [m.x, m.y]), '#9ecbff', 1.5);
+  for (const a of S.anchors || []) { const [x,y] = P(a.x, a.y); ctx.beginPath(); ctx.arc(x,y,3.5,0,7); ctx.fillStyle = '#fff'; ctx.fill(); }
+
+  if (res) for (const dv of res.devices) if (dv.status === 'located') {
+    const [x,y] = P(dv.x, dv.y); ctx.beginPath(); ctx.arc(x, y, 3, 0, 7); ctx.fillStyle = '#ffffffcc'; ctx.fill();
+  }
+  if (S.simulate && $('showTruth').checked) for (const t of S.sim_truth) {
+    const [x,y] = P(t.x, t.y); ctx.strokeStyle = '#3ecf8e'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x-5,y-5); ctx.lineTo(x+5,y+5); ctx.moveTo(x+5,y-5); ctx.lineTo(x-5,y+5); ctx.stroke();
+  }
+  for (const c of S.clusters) {
+    const [x,y] = P(c.x, c.y), col = c.state === 'cleared' ? '#3ecf8e' : c.state === 'assigned' ? '#ffb020' : '#ff5a5a';
+    ctx.beginPath(); ctx.arc(x, y, Math.max(c.radius_m * k, 14), 0, 7); ctx.strokeStyle = col; ctx.lineWidth = 2.5; ctx.stroke();
+    ctx.fillStyle = col; ctx.font = 'bold 15px system-ui';
+    ctx.fillText(`${c.id} · ${c.count}`, x + Math.max(c.radius_m*k, 14) + 4, y - 4);
+  }
+
+  // the pacer dot
+  if (S.pacer) {
+    const [x,y] = P(...pointAt(wps, cum, d)), pulse = (performance.now() / 600) % 1;
+    ctx.beginPath(); ctx.arc(x, y, 14 + pulse * 18, 0, 7); ctx.fillStyle = `rgba(61,155,255,${0.45 * (1 - pulse)})`; ctx.fill();
+    ctx.beginPath(); ctx.arc(x, y, 12, 0, 7); ctx.fillStyle = S.pacer.paused ? '#ffb020' : '#3d9bff'; ctx.fill();
+    ctx.lineWidth = 3; ctx.strokeStyle = '#fff'; ctx.stroke();
+  }
+}
+
+// ---------- panel ----------
+function fmtTime(s) { s = Math.max(0, Math.round(s)); return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`; }
+function render() {
+  $('mode').textContent = S.simulate ? 'SIMULATION: fake room and devices' : 'Live Bluetooth';
+  $('truthToggle').classList.toggle('hidden', !S.simulate);
+  if (!setupLoaded) { $('w').value = S.room.width; $('l').value = S.room.length; $('lane').value = S.room.lane; $('speed').value = S.speed; setupLoaded = true; }
+  $('p-setup').classList.toggle('hidden', S.phase !== 'setup');
+  $('p-scan').classList.toggle('hidden', S.phase !== 'scanning');
+  $('p-done').classList.toggle('hidden', S.phase !== 'done');
+  $('simnote').classList.toggle('hidden', !S.simulate);
+  $('ndev').textContent = S.devices_heard; $('nclust').textContent = S.clusters.length;
+  $('scanErr').textContent = S.scan_error ? 'Bluetooth error: ' + S.scan_error + ' (allow Bluetooth for your terminal app in System Settings → Privacy & Security)' : '';
+
+  const p = S.pacer, banner = $('banner');
+  if (p) {
+    $('eta').textContent = fmtTime(p.eta_s + p.countdown);
+    $('speedTxt').textContent = p.speed.toFixed(1) + ' m/s';
+    $('pauseBtn').innerHTML = (p.paused ? 'Resume' : 'Pause') + ' <kbd>P</kbd>';
+    banner.classList.remove('hidden');
+    if (p.countdown > 0) banner.innerHTML = `Stand on point 1<span class="huge">${Math.ceil(p.countdown)}</span>`;
+    else if (p.paused) banner.innerHTML = 'Paused: press <kbd>P</kbd> to continue';
+    else banner.innerHTML = `Follow the blue dot → point ${p.next_waypoint + 1}`;
+    const cd = Math.ceil(p.countdown);
+    if (cd !== lastCountdown && cd > 0) beep(660, 90);
+    if (lastCountdown > 0 && cd === 0) beep(990, 250);
+    lastCountdown = cd;
+    if (lastWp !== null && p.next_waypoint > lastWp) beep();
+    lastWp = p.next_waypoint;
+  } else { banner.classList.add('hidden'); lastWp = null; lastCountdown = null; }
+
+  $('nearby').innerHTML = (S.nearby || []).length ? S.nearby.map(n => `
+    <div class="near"><span>${esc(n.name || n.id.slice(0, 8))}</span><span>${n.rssi} dBm</span></div>
+    <div class="bar" style="width:${Math.max(4, Math.min(100, (n.rssi + 100) * 2))}%"></div>`).join('') : 'nothing close';
+
+  if (S.result) {
+    const pr = S.result.params;
+    if (document.activeElement !== $('n')) $('n').value = pr.n;
+    if (document.activeElement !== $('link')) $('link').value = pr.link_m;
+  }
+  $('saved').textContent = S.saved_to ? 'Saved: ' + S.saved_to : '';
+
+  const members = S.team;
+  const opts = cid => `<option value="">—</option>` + members.map(m => `<option value="${m.id}" ${m.assigned === cid ? 'selected' : ''}>${esc(m.name)}</option>`).join('');
+  $('clusters').innerHTML = S.clusters.length ? S.clusters.map(c => `
+    <div class="card cl ${c.state}">
+      <b style="font-size:16px">Cluster ${c.id}</b> <span class="pill">${c.state}${c.assignee ? ' · ' + esc(c.assignee) : ''}</span><br>
+      <span class="sub">~${c.count} device${c.count > 1 ? 's' : ''} · spread ≈ ${c.radius_m} m radius · position ±${c.uncertainty_m} m<br>
+      ${c.x.toFixed(1)} m along the right-hand wall, ${c.y.toFixed(1)} m into the room
+      ${c.names.length ? '<br>' + c.names.map(esc).join(', ') : ''}</span>
+      ${S.phase === 'done' && c.state !== 'cleared' && members.length ? `<div class="row">Send: <select onchange="sendTo(this.value,'${c.id}')">${opts(c.id)}</select></div>` : ''}
+    </div>`).join('') : (S.phase === 'setup' ? '' : '<div class="sub">No clusters yet. Keep walking.</div>');
+
+  if (S.result) {
+    const by = {}; for (const dv of S.result.devices) by[dv.status] = (by[dv.status] || 0) + 1;
+    $('devsummary').textContent = `${by.located || 0} devices located · ${by.uncertain || 0} not pinned down yet · ${by.too_few_readings || 0} heard too briefly · ${by.carried_by_you || 0} carried by you (ignored)`;
+  } else $('devsummary').textContent = '';
+
+  const st = {available:'🟢 available', en_route:'🟠 en route', arrived:'🔵 arrived', cleared:'✅ cleared', need_help:'🆘 NEEDS HELP'};
+  $('team').innerHTML = members.length ? members.map(m => `<div class="card"><b>${esc(m.name)}</b> · ${st[m.status] || m.status}${m.assigned ? ' → Cluster ' + m.assigned : ''}</div>`).join('') : 'Nobody has joined yet.';
+  $('teamurl').textContent = S.team_url;
+}
+function sendTo(memberId, clusterId) { if (memberId) post('/api/assign', {member: memberId, cluster: clusterId}); }
+
+async function refresh() {
+  try { S = await (await fetch('/api/state')).json(); fetchedAt = performance.now(); render(); }
+  catch (e) { $('mode').textContent = 'Lost connection to roomscan…'; }
+}
+fetch('/api/qr.svg').then(r => r.text()).then(t => $('qr').innerHTML = t);
+refresh(); setInterval(refresh, 500);
+(function loop() { draw(); requestAnimationFrame(loop); })();
+</script>
+</body>
+</html>

@@ -1,0 +1,49 @@
+name: BLEScout
+options:
+  bundleIdPrefix: com.evanagizzi
+  deploymentTarget:
+    iOS: "17.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: P2Y69G87UF  # Evana Gizzi (Apple Developer team)
+    MARKETING_VERSION: "1.0"      # version shown in TestFlight
+    CURRENT_PROJECT_VERSION: "1"  # build number: bump for every upload
+targets:
+  BLEScout:
+    type: application
+    platform: iOS
+    sources: [BLEScout]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.evanagizzi.blescout
+        TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    info:
+      path: BLEScout/Info.plist
+      properties:
+        CFBundleDisplayName: BLE Scout
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        ITSAppUsesNonExemptEncryption: false
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        NSBluetoothAlwaysUsageDescription: BLE Scout listens for nearby Bluetooth devices to map where they are in the room.
+        NSCameraUsageDescription: BLE Scout uses the camera (ARKit) to track where you walk, relative to your start point.
+  BLEScoutTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [BLEScoutTests]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+    dependencies:
+      - target: BLEScout
+schemes:
+  BLEScout:
+    build:
+      targets:
+        BLEScout: all
+    test:
+      targets: [BLEScoutTests]
