@@ -5,7 +5,11 @@ An iPhone app for search and rescue. Walk through an area with your phone and it
 Then **Mission** mode gives live directions to the hot spots with the most devices first,
 and **Spin to pinpoint** narrows down the last few metres.
 
-Everything is in [`ios/`](ios/). See the [iOS README](ios/README.md) for how to run it on
+- [`ios/`](ios/): the BLE Scout iPhone app.
+- [`groundstation/`](groundstation/): a laptop web app where every phone's scan shows up on
+  one live team map. Run `cd groundstation && uv run groundstation`.
+
+The app is in [`ios/`](ios/). See the [iOS README](ios/README.md) for how to run it on
 your iPhone, how to use it, how it works, and how to upload to TestFlight.
 
 ## Quick start

@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ground Station</title>
+<style>
+  :root { --bg:#0e1217; --panel:#171c23; --line:#262e38; --text:#e7eaee; --muted:#8b96a3; --accent:#3d9bff; --ok:#3ecf8e; --bad:#ff5a5a; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.45 -apple-system, system-ui, sans-serif; background:var(--bg); color:var(--text);
+         display:grid; grid-template-columns:1fr 360px; height:100vh; }
+  @media (max-width:900px) { body { grid-template-columns:1fr; height:auto; } #mapwrap { height:65vh; } }
+  #mapwrap { position:relative; padding:16px; min-height:0; }
+  canvas { width:100%; height:100%; display:block; }
+  aside { background:var(--panel); border-left:1px solid var(--line); padding:16px; overflow:auto; }
+  h1 { font-size:18px; margin:0; } h2 { font-size:12px; text-transform:uppercase; letter-spacing:.07em; color:var(--muted); margin:22px 0 8px; }
+  .sub { color:var(--muted); font-size:12px; }
+  .url { font:600 15px ui-monospace, monospace; background:#0e1217; border:1px solid var(--line); border-radius:8px; padding:8px 10px; margin:8px 0; user-select:all; }
+  .card { border:1px solid var(--line); border-left:4px solid var(--c); border-radius:8px; padding:10px; margin-bottom:8px; }
+  .card.off { opacity:.5; }
+  .row { display:flex; justify-content:space-between; gap:8px; align-items:baseline; }
+  .pill { font-size:11px; padding:1px 8px; border-radius:99px; background:#232b35; color:var(--muted); white-space:nowrap; }
+  .pill.on { background:#123d2a; color:var(--ok); } .pill.mission { background:#3a2a10; color:#ffb020; }
+  .spot { display:flex; gap:8px; padding:5px 0; border-bottom:1px dashed var(--line); font-size:13px; }
+  .dot { width:10px; height:10px; border-radius:50%; background:var(--c); margin-top:5px; flex:none; }
+  button { background:#232b35; color:var(--text); border:1px solid var(--line); border-radius:8px; padding:6px 12px; font:inherit; cursor:pointer; }
+  button:hover { border-color:var(--bad); }
+  .legend { position:absolute; left:28px; bottom:24px; font-size:12px; color:var(--muted); background:#0e1217cc; padding:6px 10px; border-radius:6px; }
+  .empty { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:var(--muted); text-align:center; pointer-events:none; }
+</style>
+</head>
+<body>
+<div id="mapwrap">
+  <canvas id="map"></canvas>
+  <div class="empty" id="empty">Waiting for phones…<br><span class="sub">Open BLE Scout on the same Wi-Fi and tap Start.</span></div>
+  <div class="legend">lines = paths · arrows = phones now · circles = hot spots (number = devices) · dashed = heading to mission target · grid = 1 m</div>
+</div>
+<aside>
+  <h1>📡 Ground Station</h1>
+  <div class="sub" id="status">connecting…</div>
+
+  <h2>Phones connect with</h2>
+  <div id="cloudBox"><div class="sub">Team code (cloud, any network):</div><div class="url" id="team">…</div></div>
+  <div class="sub">Local Wi-Fi address:</div>
+  <div class="url" id="url">…</div>
+  <div class="sub">In BLE Scout, tap the 📡 line: <b>Cloud</b> with the team code above works over any internet connection; <b>Local Wi-Fi</b> finds this Mac on the same network.</div>
+  <div class="sub" style="margin-top:6px">⚠️ Everyone should press Start standing on the <b>same mark</b>, facing the <b>same way</b>, so the maps line up.</div>
+
+  <h2>Phones</h2>
+  <div id="phones" class="sub">None yet.</div>
+
+  <h2>Hot spots (all phones)</h2>
+  <div id="spots" class="sub">None yet.</div>
+
+  <h2>Session</h2>
+  <div class="sub" id="session"></div>
+  <div style="margin-top:8px"><button onclick="resetAll()">Clear map (new session)</button></div>
+</aside>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let S = null;
+
+async function resetAll() {
+  if (!confirm('Clear every phone from the map and start a new session folder? Raw data already saved stays on disk.')) return;
+  await fetch('/api/reset', {method: 'POST'}); refresh();
+}
+
+function fromStart(x, y) {
+  return `${Math.abs(x).toFixed(1)} m ${x >= 0 ? 'right' : 'left'}, ${Math.abs(y).toFixed(1)} m ${y >= 0 ? 'ahead' : 'behind'}`;
+}
+
+// ---------- map ----------
+const cv = $('map'), ctx = cv.getContext('2d');
+function draw() {
+  const dpr = devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
+  if (cv.width !== W * dpr || cv.height !== H * dpr) { cv.width = W * dpr; cv.height = H * dpr; }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+  if (!S) return;
+  const phones = S.phones;
+  $('empty').style.display = phones.length ? 'none' : 'flex';
+
+  // fit everything (paths, phones, hot spots, start)
+  const xs = [0], ys = [0];
+  for (const p of phones) {
+    for (const q of p.path) { xs.push(q[0]); ys.push(q[1]); }
+    if (p.pose) { xs.push(p.pose.x); ys.push(p.pose.y); }
+    for (const h of p.hotSpots) { xs.push(h.x); ys.push(h.y); }
+  }
+  let x0 = Math.min(...xs) - 2, x1 = Math.max(...xs) + 2, y0 = Math.min(...ys) - 2, y1 = Math.max(...ys) + 2;
+  if (x1 - x0 < 8) { const c = (x0 + x1) / 2; x0 = c - 4; x1 = c + 4; }
+  if (y1 - y0 < 8) { const c = (y0 + y1) / 2; y0 = c - 4; y1 = c + 4; }
+  const pad = 30, k = Math.min((W - 2 * pad) / (x1 - x0), (H - 2 * pad) / (y1 - y0));
+  const ox = (W - (x1 - x0) * k) / 2, oy = H - (H - (y1 - y0) * k) / 2;
+  const P = (x, y) => [ox + (x - x0) * k, oy - (y - y0) * k];
+
+  // grid
+  ctx.strokeStyle = '#1b222a'; ctx.lineWidth = 1; ctx.beginPath();
+  for (let gx = Math.ceil(x0); gx <= x1; gx++) { const [a, b] = P(gx, y0), [c, d] = P(gx, y1); ctx.moveTo(a, b); ctx.lineTo(c, d); }
+  for (let gy = Math.ceil(y0); gy <= y1; gy++) { const [a, b] = P(x0, gy), [c, d] = P(x1, gy); ctx.moveTo(a, b); ctx.lineTo(c, d); }
+  ctx.stroke();
+
+  // start mark
+  const [sx, sy] = P(0, 0);
+  ctx.fillStyle = '#3ecf8e'; ctx.fillRect(sx - 7, sy - 7, 14, 14);
+  ctx.font = '600 11px system-ui'; ctx.textAlign = 'center'; ctx.fillText('START', sx, sy + 22);
+
+  for (const p of phones) {
+    const alpha = p.online ? 1 : 0.4;
+    ctx.globalAlpha = alpha;
+    // path
+    if (p.path.length > 1) {
+      ctx.strokeStyle = p.color; ctx.lineWidth = 2; ctx.globalAlpha = alpha * 0.55; ctx.beginPath();
+      p.path.forEach((q, i) => { const [x, y] = P(q[0], q[1]); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+      ctx.stroke(); ctx.globalAlpha = alpha;
+    }
+    // hot spots
+    for (const h of p.hotSpots) {
+      const [x, y] = P(h.x, h.y), r = Math.max(h.spread * k, 12);
+      ctx.strokeStyle = p.color; ctx.lineWidth = 2.5; ctx.setLineDash(h.roughCount === h.count ? [4, 4] : []);
+      ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = p.color; ctx.font = 'bold 14px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(h.count, x, y); ctx.textBaseline = 'alphabetic';
+    }
+    // mission target line
+    if (p.pose && p.missionTarget) {
+      const [a, b] = P(p.pose.x, p.pose.y), [c, d] = P(p.missionTarget.x, p.missionTarget.y);
+      ctx.strokeStyle = p.color; ctx.lineWidth = 2; ctx.setLineDash([7, 6]);
+      ctx.beginPath(); ctx.moveTo(a, b); ctx.lineTo(c, d); ctx.stroke(); ctx.setLineDash([]);
+    }
+    // phone arrow + name
+    if (p.pose) {
+      const [x, y] = P(p.pose.x, p.pose.y);
+      ctx.save(); ctx.translate(x, y); ctx.rotate(p.pose.heading || 0);
+      ctx.beginPath(); ctx.moveTo(0, -13); ctx.lineTo(8, 9); ctx.lineTo(0, 4); ctx.lineTo(-8, 9); ctx.closePath();
+      ctx.fillStyle = p.color; ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke(); ctx.restore();
+      ctx.fillStyle = '#fff'; ctx.font = '600 12px system-ui'; ctx.textAlign = 'left';
+      ctx.fillText(p.name + (p.online ? '' : ' (offline)'), x + 12, y - 10);
+    }
+    ctx.globalAlpha = 1;
+  }
+  ctx.textAlign = 'start';
+}
+
+// ---------- side panel ----------
+function render() {
+  $('url').textContent = S.url || '…';
+  $('cloudBox').style.display = S.team ? '' : 'none';
+  $('team').textContent = S.team || '';
+  const online = S.phones.filter(p => p.online).length;
+  $('status').textContent = `${online} of ${S.phones.length} phone(s) online · up ${Math.floor(S.uptime / 60)} min`;
+  $('session').textContent = 'Raw data: ' + S.sessionDir;
+
+  $('phones').innerHTML = S.phones.length ? S.phones.map(p => `
+    <div class="card ${p.online ? '' : 'off'}" style="--c:${p.color}">
+      <div class="row"><b>${esc(p.name)}</b>
+        <span class="pill ${p.online ? (p.screen === 'mission' ? 'mission' : 'on') : ''}">${p.online ? (p.running ? (p.screen === 'mission' ? 'on mission' : 'scanning') : 'paused') : 'offline ' + Math.round(p.lastSeenAgo) + 's'}</span></div>
+      <div class="sub">${p.stats.named ?? 0} named devices · ${p.hotSpots.length} hot spot(s) · ${p.samplesReceived} readings sent</div>
+      ${p.pose ? `<div class="sub">at ${fromStart(p.pose.x, p.pose.y)} of start</div>` : ''}
+      ${p.missionTarget ? `<div class="sub" style="color:#ffb020">→ heading to ${esc((p.missionTarget.names || []).slice(0, 3).join(', '))}</div>` : ''}
+    </div>`).join('') : 'None yet.';
+
+  const spots = S.phones.flatMap(p => p.hotSpots.map(h => ({...h, phone: p})))
+                        .sort((a, b) => b.count - a.count);
+  $('spots').innerHTML = spots.length ? spots.map(h => `
+    <div class="spot" style="--c:${h.phone.color}"><span class="dot"></span>
+      <div><b>${h.count} device${h.count === 1 ? '' : 's'}</b>${h.roughCount === h.count ? ' <span class="pill">rough</span>' : ''}
+        <span class="sub">· seen by ${esc(h.phone.name)}</span><br>
+        <span class="sub">${fromStart(h.x, h.y)} of start · ${esc((h.names || []).slice(0, 4).join(', '))}</span></div>
+    </div>`).join('') : 'None yet.';
+}
+
+async function refresh() {
+  try { S = await (await fetch('/api/state')).json(); render(); }
+  catch (e) { $('status').textContent = 'Lost connection to the ground station server…'; }
+}
+refresh(); setInterval(refresh, 1000);
+(function loop() { draw(); requestAnimationFrame(loop); })();
+</script>
+</body>
+</html>

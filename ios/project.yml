@@ -9,7 +9,7 @@ settings:
     CODE_SIGN_STYLE: Automatic
     DEVELOPMENT_TEAM: P2Y69G87UF  # Evana Gizzi (Apple Developer team)
     MARKETING_VERSION: "1.0"      # version shown in TestFlight
-    CURRENT_PROJECT_VERSION: "8"  # build number: bump for every upload
+    CURRENT_PROJECT_VERSION: "10"  # build number: bump for every upload
 targets:
   BLEScout:
     type: application
@@ -27,6 +27,10 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         ITSAppUsesNonExemptEncryption: false
+        NSLocalNetworkUsageDescription: BLE Scout shares your scan with your team's ground station on the local network.
+        NSBonjourServices: [_blescout._tcp]
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         NSBluetoothAlwaysUsageDescription: BLE Scout listens for nearby Bluetooth devices to map where they are in the room.
