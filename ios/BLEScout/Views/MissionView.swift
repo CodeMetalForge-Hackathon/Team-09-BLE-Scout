@@ -9,6 +9,8 @@ struct MissionView: View {
         VStack(spacing: 12) {
             if session.paused {
                 pausedCard
+            } else if session.spinning {
+                spinCard
             } else if let target = plan.current, let me = session.current {
                 guidance(target: target, me: me, plan: plan)
             } else if plan.clearedCount > 0 && plan.current == nil {
@@ -26,8 +28,8 @@ struct MissionView: View {
     @ViewBuilder
     private func guidance(target t: MissionTarget, me: Pose, plan: MissionPlanner) -> some View {
         let rank = (plan.remaining.firstIndex { $0.id == t.id } ?? 0) + 1
-        let distance = hypot(t.x - me.x, t.y - me.y)
-        let turn = Direction.relativeAngle(from: me, toX: t.x, y: t.y)
+        let distance = hypot(t.goalX - me.x, t.goalY - me.y)
+        let turn = Direction.relativeAngle(from: me, toX: t.goalX, y: t.goalY)
         let arrived = session.arrivedTargetID == t.id
 
         VStack(spacing: 10) {
@@ -63,7 +65,7 @@ struct MissionView: View {
                         Text(Steering.instruction(turn: turn, distance: distance))
                             .font(.title2.bold())
                             .minimumScaleFactor(0.7).lineLimit(2)
-                        Text(Direction.fromStart(x: t.x, y: t.y)).font(.caption).foregroundStyle(.secondary)
+                        Text(Direction.fromStart(x: t.goalX, y: t.goalY)).font(.caption).foregroundStyle(.secondary)
                     }
                     signal
                 }
@@ -73,6 +75,14 @@ struct MissionView: View {
             Text(t.names.joined(separator: " · "))
                 .font(.caption).foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading).lineLimit(2)
+            if let note = t.pinNote {
+                Label(note, systemImage: "scope").font(.caption).foregroundStyle(.orange)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if let msg = session.spinOutcome {
+                Label(msg, systemImage: "exclamationmark.triangle.fill").font(.caption).foregroundStyle(.yellow)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
 
             HStack(spacing: 10) {
                 Button { session.skipTarget() } label: {
@@ -86,6 +96,15 @@ struct MissionView: View {
                         .foregroundStyle(.black)
                 }
                 .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.plain)
+
+            Button { session.startSpin() } label: {
+                Label(t.pinned ? "Spin again to re-pinpoint" : "Spin to pinpoint (turn a full circle)",
+                      systemImage: "arrow.triangle.2.circlepath")
+                    .font(.subheadline.bold()).frame(maxWidth: .infinity).padding(.vertical, 10)
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.orange, lineWidth: 1.5))
+                    .foregroundStyle(.orange)
             }
             .buttonStyle(.plain)
         }
@@ -120,6 +139,47 @@ struct MissionView: View {
                 .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
         }
         .padding().frame(maxWidth: .infinity)
+        .background(Color(white: 0.11), in: RoundedRectangle(cornerRadius: 16))
+        .padding(.horizontal)
+    }
+
+    // MARK: spin
+
+    private var spinCard: some View {
+        let deg = session.spinCoverage
+        return VStack(spacing: 12) {
+            Text("Spin to pinpoint").font(.headline)
+            ZStack {
+                Circle().stroke(Color.white.opacity(0.1), lineWidth: 14)
+                Circle().trim(from: 0, to: min(deg / 360, 1))
+                    .stroke(Color.orange, style: StrokeStyle(lineWidth: 14, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                    .animation(.easeOut(duration: 0.2), value: deg)
+                VStack(spacing: 2) {
+                    Text("\(Int(deg))°").font(.system(size: 34, weight: .bold).monospacedDigit())
+                    Text("of 360°").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            .frame(width: 140, height: 140)
+            Text("Hold the phone out in front of you and turn slowly in place, one full circle (about 15 seconds). Your body blocks the signal from behind, so the app can tell which way the devices are.")
+                .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            Text("\(session.spinReadings) readings from this hot spot").font(.caption2.monospacedDigit())
+                .foregroundStyle(session.spinReadings < 8 ? .yellow : .secondary)
+            HStack(spacing: 10) {
+                Button { session.cancelSpin() } label: {
+                    Text("Cancel").frame(maxWidth: .infinity).padding(.vertical, 12)
+                        .background(Color(white: 0.18), in: RoundedRectangle(cornerRadius: 12))
+                }
+                Button { session.finishSpin() } label: {
+                    Text("Done").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 12)
+                        .background(deg >= 180 ? Color.orange : Color.orange.opacity(0.3), in: RoundedRectangle(cornerRadius: 12))
+                        .foregroundStyle(.black)
+                }
+                .disabled(deg < 180)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding()
         .background(Color(white: 0.11), in: RoundedRectangle(cornerRadius: 16))
         .padding(.horizontal)
     }

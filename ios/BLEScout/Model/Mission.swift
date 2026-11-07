@@ -14,10 +14,20 @@ struct MissionTarget: Identifiable, Equatable {
     var spread: Double
     var uncertainty: Double
     var status: Status = .pending
+    /// Set by "spin to pinpoint": a more precise spot to head for than the hot spot's centre.
+    var pinX: Double? = nil
+    var pinY: Double? = nil
+    var pinNote: String? = nil
     var count: Int { deviceIDs.count }
+    var pinned: Bool { pinX != nil }
 
-    /// How close counts as "there": the hot spot's size plus its position error, at least 1 m.
-    var arrivalRadius: Double { max(1.0, min(spread + uncertainty, 3.0)) }
+    /// Where to walk to: the pinpointed spot if there is one, else the hot spot's centre.
+    var goalX: Double { pinX ?? x }
+    var goalY: Double { pinY ?? y }
+
+    /// How close counts as "there": 1 m for a pinpointed spot, else the hot spot's size
+    /// plus its position error (1-3 m).
+    var arrivalRadius: Double { pinned ? 1.0 : max(1.0, min(spread + uncertainty, 3.0)) }
 }
 
 /// Keeps an ordered plan of hot spots to visit: most devices first.
@@ -71,6 +81,12 @@ struct MissionPlanner {
             return (order, -t.count, hypot(t.x - px, t.y - py))
         }
         targets.sort { key($0) < key($1) }
+    }
+
+    /// Record a spin-to-pinpoint result for a target.
+    mutating func pin(_ id: UUID, x: Double, y: Double, note: String) {
+        guard let i = targets.firstIndex(where: { $0.id == id }) else { return }
+        targets[i].pinX = x; targets[i].pinY = y; targets[i].pinNote = note
     }
 
     mutating func clearCurrent(from pose: Pose?) { setCurrent(.cleared, pose) }

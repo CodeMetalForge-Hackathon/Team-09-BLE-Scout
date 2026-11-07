@@ -28,6 +28,17 @@ final class ScanSession: ObservableObject {
     @Published private(set) var targetSignal: TargetSignal?
     private var signalHistory: [(t: TimeInterval, rssi: Int)] = []
 
+    // Spin to pinpoint
+    @Published private(set) var spinning = false
+    @Published private(set) var spinCoverage = 0.0        // degrees of the circle covered
+    @Published private(set) var spinReadings = 0
+    @Published private(set) var spinOutcome: String?      // message after a spin
+    private var spinTarget: UUID?
+    private var spinDevices = Set<String>()
+    private var spinData: [SpinReading] = []
+    private var spinCovered = Set<Int>()
+    private var spinStart: TimeInterval = 0
+
     let tracker = PoseTracker()
     private let scanner = BLEScanner()
     private var samples: [BLESample] = []
@@ -111,6 +122,7 @@ final class ScanSession: ObservableObject {
         guard running else { return }
         allPoses.append(pose)
         checkArrival(pose)
+        if spinning { spinStep(pose) }
         // Redraw the screen ~4x a second, not on every 10 Hz pose: keeps taps responsive and saves battery.
         if pose.t - lastPosePublish >= 0.25 {
             lastPosePublish = pose.t
@@ -124,6 +136,9 @@ final class ScanSession: ObservableObject {
         // Keep every reading, named or not, so the "include unnamed" switch can apply to the whole scan.
         // Many devices only send their name in some adverts, so "named" is decided per device, not per reading.
         samples.append(sample)
+        if spinning, spinDevices.contains(sample.id), let h = allPoses.last?.heading {
+            spinData.append(SpinReading(heading: h, device: sample.id, rssi: Double(sample.rssi)))
+        }
         if let name = sample.name {
             knownNames[sample.id] = name
             if namedIDs.insert(sample.id).inserted {
@@ -168,7 +183,63 @@ final class ScanSession: ObservableObject {
         afterTargetChange()
     }
 
+    // MARK: - Spin to pinpoint
+
+    func startSpin() {
+        guard let t = mission.current, running else { return }
+        spinTarget = t.id
+        spinDevices = t.deviceIDs
+        spinData = []; spinCovered = []
+        spinStart = allPoses.last?.t ?? 0
+        spinCoverage = 0; spinReadings = 0; spinOutcome = nil
+        spinning = true
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+    }
+
+    func cancelSpin() {
+        spinning = false
+        spinOutcome = nil
+    }
+
+    private func spinStep(_ p: Pose) {
+        let before = spinCovered.count
+        spinCovered.insert(SpinLocator.sector(p.heading))
+        if spinCovered.count != before {
+            spinCoverage = SpinLocator.coverageDegrees(spinCovered)
+            if spinCovered.count % 6 == 0 { UIImpactFeedbackGenerator(style: .light).impactOccurred() } // every 90°
+        }
+        spinReadings = spinData.count
+        let elapsed = p.t - spinStart
+        if (spinCoverage >= 345 && elapsed >= 6) || elapsed >= 45 { finishSpin() }
+    }
+
+    func finishSpin() {
+        guard spinning else { return }
+        spinning = false
+        guard let id = spinTarget, let me = allPoses.last else { return }
+        guard let r = SpinLocator.estimate(spinData, pathLossN: params.n) else {
+            spinOutcome = spinData.count < 8
+                ? "Hardly heard this hot spot's devices during the spin. Move closer and try again."
+                : "Turn a full circle, slowly, then try again."
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            return
+        }
+        if r.confidence == .low {
+            spinOutcome = "No clear direction. The devices may be right next to you (within ~1 m), or the signal is bouncing off walls. Search close by."
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            return
+        }
+        let x = me.x + r.distance * sin(r.bearing), y = me.y + r.distance * cos(r.bearing)
+        let note = String(format: "Pinpointed by spin: about %.0f m that way (%@ confidence)", r.distance, r.confidence.rawValue)
+        mission.pin(id, x: x, y: y, note: note)
+        arrivedTargetID = nil
+        spinOutcome = nil
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+    }
+
     private func afterTargetChange() {
+        spinning = false
+        spinOutcome = nil
         arrivedTargetID = nil
         targetSignal = nil
         signalHistory = []
@@ -176,7 +247,7 @@ final class ScanSession: ObservableObject {
 
     private func checkArrival(_ p: Pose) {
         guard screen == .mission, let t = mission.current else { return }
-        let d = hypot(t.x - p.x, t.y - p.y)
+        let d = hypot(t.goalX - p.x, t.goalY - p.y)
         if d <= t.arrivalRadius, arrivedTargetID != t.id {
             arrivedTargetID = t.id
             UINotificationFeedbackGenerator().notificationOccurred(.success)

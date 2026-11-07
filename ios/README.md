@@ -45,6 +45,11 @@ reinstall.
    - a live signal meter for the target's devices: **warmer** or **colder**
    - a buzz and "You're there" on arrival
    - **Cleared · next** marks it done and moves on; **Skip** sends it to the end of the list.
+   - **Spin to pinpoint:** at a hot spot, hold the phone out and turn slowly in a full
+     circle. Your body blocks the signal from behind, so the dip in signal strength
+     shows which way the devices are. The app then moves the target to that spot (★ on
+     the map) and guides you the last few metres. If there's no clear direction, the
+     devices are probably right next to you.
 
    Scanning keeps running during a mission, so positions keep improving and new hot
    spots join the plan. Cleared hot spots only come back if several new devices show
@@ -83,6 +88,10 @@ unit tests use a simulated room (`BLEScoutTests/TestWorld.swift`).
   screen) adds them, re-analysing the whole scan; readings are always recorded. Many
   phones only show up this way, but unnamed devices change their Bluetooth address
   every ~15 min, so one phone can appear as two devices on long scans.
+- **Spin** (`Model/Spin.swift`): fits `rssi(θ) ≈ a + b·cos(θ − φ)` to readings taken
+  while turning (each device compared only with itself). φ is the direction; b (the
+  swing, in dB) is the confidence: ≥4 dB high, ≥2 dB medium, below that "no clear
+  direction". Distance comes from the loudest readings. Needs at least half the circle covered.
 - **Mission** (`Model/Mission.swift`): hot spots are re-lettered on every analysis, so
   mission targets are tracked by *which devices they contain*. Order: most devices
   first, then nearest. "Arrived" = within the hot spot's size plus its position error

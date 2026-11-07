@@ -19,8 +19,10 @@
 		913AF6476FF03CF54ED11581 /* PersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1697EC14865A197188D5E6 /* PersistenceTests.swift */; };
 		93E6B92AA98986C1245BFD45 /* ScanSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = E087611224732C402C1513F1 /* ScanSession.swift */; };
 		9A69E0DC7B3BF41E3F3F0665 /* TestWorld.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73072DED04A40A5C92BF7429 /* TestWorld.swift */; };
+		A08CF24FC048F83AC1D8A220 /* Spin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DB008567F4393BBAF94DE72 /* Spin.swift */; };
 		A4B76B951F19AD2130559859 /* Mission.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0E46204829F9DBFE449902B /* Mission.swift */; };
 		BC73372E56D5DB44DE809661 /* Types.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FD201F726B882E9873BF99E /* Types.swift */; };
+		C5BFDC18E02C3D464F6C27FF /* SpinTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F388C56CE779613B6DC2379F /* SpinTests.swift */; };
 		E012AFE14EDABFED04EEA22A /* LocalizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB9256FCCFC53D7D7123F95B /* LocalizerTests.swift */; };
 /* End PBXBuildFile section */
 
@@ -43,6 +45,7 @@
 		693E8B49F94C5F0DBE671A80 /* BLEScoutTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = BLEScoutTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		6FD201F726B882E9873BF99E /* Types.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Types.swift; sourceTree = "<group>"; };
 		73072DED04A40A5C92BF7429 /* TestWorld.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestWorld.swift; sourceTree = "<group>"; };
+		7DB008567F4393BBAF94DE72 /* Spin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Spin.swift; sourceTree = "<group>"; };
 		915D4098C6C790AD2B05D1C9 /* PoseTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PoseTracker.swift; sourceTree = "<group>"; };
 		92A42EC91C2E67CA2A184A74 /* BLEScout.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = BLEScout.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B12F6A9B406EE846F9B89251 /* BLEScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BLEScanner.swift; sourceTree = "<group>"; };
@@ -52,6 +55,7 @@
 		DB9256FCCFC53D7D7123F95B /* LocalizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizerTests.swift; sourceTree = "<group>"; };
 		E087611224732C402C1513F1 /* ScanSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanSession.swift; sourceTree = "<group>"; };
 		E0E46204829F9DBFE449902B /* Mission.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mission.swift; sourceTree = "<group>"; };
+		F388C56CE779613B6DC2379F /* SpinTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpinTests.swift; sourceTree = "<group>"; };
 		FFF58058408DE89591155A52 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -94,6 +98,7 @@
 			children = (
 				173780A1A7F54488D979749C /* Localizer.swift */,
 				E0E46204829F9DBFE449902B /* Mission.swift */,
+				7DB008567F4393BBAF94DE72 /* Spin.swift */,
 				6FD201F726B882E9873BF99E /* Types.swift */,
 			);
 			path = Model;
@@ -123,6 +128,7 @@
 				DB9256FCCFC53D7D7123F95B /* LocalizerTests.swift */,
 				44BB7FE75E56EBF29A2F2BB7 /* MissionTests.swift */,
 				BB1697EC14865A197188D5E6 /* PersistenceTests.swift */,
+				F388C56CE779613B6DC2379F /* SpinTests.swift */,
 				73072DED04A40A5C92BF7429 /* TestWorld.swift */,
 			);
 			path = BLEScoutTests;
@@ -231,6 +237,7 @@
 				4AC0246CA5C0D82C2F647882 /* MissionView.swift in Sources */,
 				171B25FA7A40EB4E60E3A382 /* PoseTracker.swift in Sources */,
 				93E6B92AA98986C1245BFD45 /* ScanSession.swift in Sources */,
+				A08CF24FC048F83AC1D8A220 /* Spin.swift in Sources */,
 				BC73372E56D5DB44DE809661 /* Types.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -242,6 +249,7 @@
 				E012AFE14EDABFED04EEA22A /* LocalizerTests.swift in Sources */,
 				132E27DF4A209649BB2C21FA /* MissionTests.swift in Sources */,
 				913AF6476FF03CF54ED11581 /* PersistenceTests.swift in Sources */,
+				C5BFDC18E02C3D464F6C27FF /* SpinTests.swift in Sources */,
 				9A69E0DC7B3BF41E3F3F0665 /* TestWorld.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -292,7 +300,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 5;
+				CURRENT_PROJECT_VERSION = 6;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = P2Y69G87UF;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -352,7 +360,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 5;
+				CURRENT_PROJECT_VERSION = 6;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = P2Y69G87UF;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;

@@ -68,7 +68,7 @@ struct MapView: View {
                 let order = mission.remaining
                 if let cur = mission.current, let me = current {
                     var route = Path()
-                    route.move(to: P(me.x, me.y)); route.addLine(to: P(cur.x, cur.y))
+                    route.move(to: P(me.x, me.y)); route.addLine(to: P(cur.goalX, cur.goalY))
                     ctx.stroke(route, with: .color(.orange), style: StrokeStyle(lineWidth: 3, dash: [8, 6]))
                 }
                 for t in targets {
@@ -80,6 +80,11 @@ struct MapView: View {
                     let label = t.status == .cleared ? "✓" : "\((order.firstIndex { $0.id == t.id } ?? 0) + 1)"
                     ctx.draw(Text(label).font(.system(size: isCurrent ? 18 : 14, weight: .heavy)).foregroundColor(color),
                              at: p)
+                    if t.pinned && t.status != .cleared {
+                        // pinpointed spot from a spin
+                        ctx.draw(Text("★").font(.system(size: 22, weight: .bold)).foregroundColor(.yellow),
+                                 at: P(t.goalX, t.goalY))
+                    }
                     ctx.draw(Text("\(t.count) dev").font(.system(size: 11, weight: .semibold)).foregroundColor(color.opacity(0.8)),
                              at: CGPoint(x: p.x + r + 4, y: p.y), anchor: .leading)
                 }
