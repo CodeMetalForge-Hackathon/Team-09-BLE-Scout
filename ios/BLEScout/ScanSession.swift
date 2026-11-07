@@ -43,6 +43,10 @@ final class ScanSession: ObservableObject {
     private var spinStart: TimeInterval = 0
 
     let tracker = PoseTracker()
+    let link = GroundLink()
+    private var sessionStartWall: TimeInterval = 0
+    private var sentPoses = 0, sentSamples = 0
+    private var syncTask: Task<Void, Never>?
     private let scanner = BLEScanner()
     private var samples: [BLESample] = []
     private var allPoses: [Pose] = []          // every pose; `poses` is a throttled copy for the UI
@@ -73,6 +77,8 @@ final class ScanSession: ObservableObject {
         guard liveSupported else { return }
         reset()
         screen = .scan
+        sessionStartWall = Date().timeIntervalSince1970
+        sentPoses = 0; sentSamples = 0
         trackingStatus = "Starting… move the phone slowly"
         tracker.start()
         begin()
@@ -86,7 +92,8 @@ final class ScanSession: ObservableObject {
         tracker.pause()
         scanner.stop()
         trackingStatus = "Paused"
-        Task { await analyze() }
+        syncTask?.cancel()
+        Task { await analyze(); await syncToGround() } // let the station know we paused
     }
 
     /// Continue the same session: ARKit keeps its coordinate frame, so hot spots stay put.
@@ -107,6 +114,13 @@ final class ScanSession: ObservableObject {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 2_000_000_000)
                 await self?.analyze()
+            }
+        }
+        syncTask?.cancel()
+        syncTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                await self?.syncToGround()
             }
         }
     }
@@ -329,6 +343,38 @@ final class ScanSession: ObservableObject {
                                heat: Localizer.heat(from: fixes, poses: p) ?? fresh.heat)
         result = r
         mission.update(with: r.clusters, from: current)
+    }
+
+    // MARK: - Ground station
+
+    /// Send everything new since the last successful batch. If the station is unreachable the
+    /// data waits and goes with the next batch (oldest readings dropped beyond a cap).
+    private func syncToGround() async {
+        guard link.canSend, sessionStartWall > 0 else { return }
+        if samples.count - sentSamples > 20_000 { sentSamples = samples.count - 20_000 }
+        let newPoses = Array(allPoses[min(sentPoses, allPoses.count)...])
+        let newSamples = Array(samples[min(sentSamples, samples.count)...])
+        let posesCount = allPoses.count, samplesCount = samples.count
+        let spots = (result?.clusters ?? []).map {
+            GroundBatch.HotSpot(id: $0.id, x: $0.x, y: $0.y, count: $0.count, roughCount: $0.roughCount,
+                                names: $0.names, spread: $0.spread, uncertainty: $0.uncertainty)
+        }
+        let target = screen == .mission ? mission.current.map {
+            GroundBatch.Target(x: $0.goalX, y: $0.goalY, names: $0.names)
+        } : nil
+        let batch = GroundBatch(
+            phoneId: link.phoneID, name: link.displayName,
+            sentAt: Date().timeIntervalSince1970, uptimeAtSend: ProcessInfo.processInfo.systemUptime,
+            sessionStart: sessionStartWall, running: running, screen: screen.rawValue.lowercased(),
+            pose: allPoses.last,
+            poses: newPoses.enumerated().filter { $0.offset % 5 == 0 }.map(\.element), // ~2 per second
+            samples: newSamples, hotSpots: spots, missionTarget: target,
+            stats: ["named": namedHeard, "unnamed": unnamedIgnored])
+        guard let body = try? JSONEncoder().encode(batch) else { return }
+        if await link.send(body) {
+            sentPoses = posesCount
+            sentSamples = samplesCount
+        }
     }
 
     // MARK: - Export

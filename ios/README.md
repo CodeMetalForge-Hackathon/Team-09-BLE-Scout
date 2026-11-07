@@ -61,6 +61,13 @@ reinstall.
 The app needs a real iPhone: the Simulator has no Bluetooth or motion tracking. The
 unit tests use a simulated room (`BLEScoutTests/TestWorld.swift`).
 
+## Ground station
+
+Tap the **📡 Ground station** line under the title. While you scan, the app sends your
+position, readings and hot spots to the team's laptop ground station every 2 s. It finds
+the station automatically on the same Wi-Fi, or you can type its address. Set your name
+there, and use **Test connection** to check. See [`../groundstation/`](../groundstation/).
+
 ## How it works
 
 - **Position** (`Sources/PoseTracker.swift`): ARKit world tracking (camera + motion

@@ -23,7 +23,11 @@
 		9A69E0DC7B3BF41E3F3F0665 /* TestWorld.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73072DED04A40A5C92BF7429 /* TestWorld.swift */; };
 		A08CF24FC048F83AC1D8A220 /* Spin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DB008567F4393BBAF94DE72 /* Spin.swift */; };
 		A4B76B951F19AD2130559859 /* Mission.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0E46204829F9DBFE449902B /* Mission.swift */; };
+		B7E36F061794DE49BCBCAC65 /* GroundLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2702569528B9777186CCBD3 /* GroundLink.swift */; };
+		BAEDB3597D5ACC8F3A5221C3 /* GroundViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72BC233DDD8E07C835331719 /* GroundViews.swift */; };
 		BC73372E56D5DB44DE809661 /* Types.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FD201F726B882E9873BF99E /* Types.swift */; };
+		BEA66973BF77506686243B51 /* CloudConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = B78C69AC81CAE192A1BC53E9 /* CloudConfig.swift */; };
+		BF0CE5E6217CC0777C863689 /* GroundBatchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F85092D6E3E3AB878643C79C /* GroundBatchTests.swift */; };
 		C5BFDC18E02C3D464F6C27FF /* SpinTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F388C56CE779613B6DC2379F /* SpinTests.swift */; };
 		E012AFE14EDABFED04EEA22A /* LocalizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB9256FCCFC53D7D7123F95B /* LocalizerTests.swift */; };
 /* End PBXBuildFile section */
@@ -48,18 +52,22 @@
 		631602BC3067CB5AFC19699A /* MapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapView.swift; sourceTree = "<group>"; };
 		693E8B49F94C5F0DBE671A80 /* BLEScoutTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = BLEScoutTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		6FD201F726B882E9873BF99E /* Types.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Types.swift; sourceTree = "<group>"; };
+		72BC233DDD8E07C835331719 /* GroundViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroundViews.swift; sourceTree = "<group>"; };
 		73072DED04A40A5C92BF7429 /* TestWorld.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestWorld.swift; sourceTree = "<group>"; };
 		7DB008567F4393BBAF94DE72 /* Spin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Spin.swift; sourceTree = "<group>"; };
 		915D4098C6C790AD2B05D1C9 /* PoseTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PoseTracker.swift; sourceTree = "<group>"; };
 		92A42EC91C2E67CA2A184A74 /* BLEScout.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = BLEScout.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B12F6A9B406EE846F9B89251 /* BLEScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BLEScanner.swift; sourceTree = "<group>"; };
 		B75E6A40D9CA35AE8B8D7B15 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		B78C69AC81CAE192A1BC53E9 /* CloudConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudConfig.swift; sourceTree = "<group>"; };
 		BB1697EC14865A197188D5E6 /* PersistenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistenceTests.swift; sourceTree = "<group>"; };
+		C2702569528B9777186CCBD3 /* GroundLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroundLink.swift; sourceTree = "<group>"; };
 		C549A2854382C8BCF016755E /* BLEScoutApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BLEScoutApp.swift; sourceTree = "<group>"; };
 		DB9256FCCFC53D7D7123F95B /* LocalizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizerTests.swift; sourceTree = "<group>"; };
 		E087611224732C402C1513F1 /* ScanSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanSession.swift; sourceTree = "<group>"; };
 		E0E46204829F9DBFE449902B /* Mission.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mission.swift; sourceTree = "<group>"; };
 		F388C56CE779613B6DC2379F /* SpinTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpinTests.swift; sourceTree = "<group>"; };
+		F85092D6E3E3AB878643C79C /* GroundBatchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroundBatchTests.swift; sourceTree = "<group>"; };
 		FFF58058408DE89591155A52 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -68,6 +76,8 @@
 			isa = PBXGroup;
 			children = (
 				B12F6A9B406EE846F9B89251 /* BLEScanner.swift */,
+				B78C69AC81CAE192A1BC53E9 /* CloudConfig.swift */,
+				C2702569528B9777186CCBD3 /* GroundLink.swift */,
 				915D4098C6C790AD2B05D1C9 /* PoseTracker.swift */,
 			);
 			path = Sources;
@@ -91,6 +101,7 @@
 			isa = PBXGroup;
 			children = (
 				13E3BC089679323857863E2D /* ContentView.swift */,
+				72BC233DDD8E07C835331719 /* GroundViews.swift */,
 				631602BC3067CB5AFC19699A /* MapView.swift */,
 				06FC9D17274C4DC16D4AAB96 /* MissionView.swift */,
 			);
@@ -129,6 +140,7 @@
 		E760966BF632418194801BC3 /* BLEScoutTests */ = {
 			isa = PBXGroup;
 			children = (
+				F85092D6E3E3AB878643C79C /* GroundBatchTests.swift */,
 				DB9256FCCFC53D7D7123F95B /* LocalizerTests.swift */,
 				44BB7FE75E56EBF29A2F2BB7 /* MissionTests.swift */,
 				BB1697EC14865A197188D5E6 /* PersistenceTests.swift */,
@@ -236,7 +248,10 @@
 			files = (
 				0CDAB68E0883C2567188E690 /* BLEScanner.swift in Sources */,
 				283D55D647FCB64F6D29DCE8 /* BLEScoutApp.swift in Sources */,
+				BEA66973BF77506686243B51 /* CloudConfig.swift in Sources */,
 				6E4F43C1202DBF149E6FC3E7 /* ContentView.swift in Sources */,
+				B7E36F061794DE49BCBCAC65 /* GroundLink.swift in Sources */,
+				BAEDB3597D5ACC8F3A5221C3 /* GroundViews.swift in Sources */,
 				074DA7000B089DA06EEB7B43 /* Localizer.swift in Sources */,
 				45C0F6ACB625B4E03B51F7D2 /* MapView.swift in Sources */,
 				A4B76B951F19AD2130559859 /* Mission.swift in Sources */,
@@ -252,6 +267,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				BF0CE5E6217CC0777C863689 /* GroundBatchTests.swift in Sources */,
 				E012AFE14EDABFED04EEA22A /* LocalizerTests.swift in Sources */,
 				132E27DF4A209649BB2C21FA /* MissionTests.swift in Sources */,
 				913AF6476FF03CF54ED11581 /* PersistenceTests.swift in Sources */,
@@ -308,7 +324,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 8;
+				CURRENT_PROJECT_VERSION = 10;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = P2Y69G87UF;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -368,7 +384,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 8;
+				CURRENT_PROJECT_VERSION = 10;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = P2Y69G87UF;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;

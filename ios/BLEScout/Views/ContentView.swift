@@ -62,6 +62,7 @@ struct ContentView: View {
                 }
                 .disabled(!session.liveSupported)
             }
+            GroundStatusRow(link: session.link)
             if !session.liveSupported {
                 Text("Needs a real iPhone: the Simulator has no Bluetooth or motion tracking.")
                     .font(.caption).foregroundStyle(.orange).frame(maxWidth: .infinity, alignment: .leading)

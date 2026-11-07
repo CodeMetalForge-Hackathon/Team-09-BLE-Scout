@@ -22,10 +22,21 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>BLE Scout listens for nearby Bluetooth devices to map where they are in the room.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_blescout._tcp</string>
+	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>BLE Scout uses the camera only to track where you walk (ARKit). Nothing is shown, recorded or saved.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>BLE Scout shares your scan with your team's ground station on the local network.</string>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>
