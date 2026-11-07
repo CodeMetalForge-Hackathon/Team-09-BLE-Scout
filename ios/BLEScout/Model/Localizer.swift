@@ -35,8 +35,8 @@ enum Localizer {
         var names: [String: String] = [:]
         let lookup = PoseLookup(poses)
         for s in samples {
-            guard let name = s.name, let pos = lookup.position(at: s.t) else { continue }
-            names[s.id] = name
+            guard let pos = lookup.position(at: s.t) else { continue }
+            if let name = s.name { names[s.id] = name }
             let key = BinKey(ix: Int((pos.x / p.bin).rounded(.down)), iy: Int((pos.y / p.bin).rounded(.down)))
             var b = bins[s.id, default: [:]][key, default: Bin()]
             b.sx += pos.x; b.sy += pos.y; b.rssi.append(s.rssi)
@@ -60,18 +60,19 @@ enum Localizer {
             }
             let rssi = obs.map(\.r).sorted()
             let med = median(rssi)
-            let name = names[id] ?? id
+            let isNamed = names[id] != nil
+            let name = names[id] ?? "Unnamed · \(id.prefix(4))"
             let ox = obs.map(\.x), oy = obs.map(\.y)
             let span = max((ox.max() ?? 0) - (ox.min() ?? 0), (oy.max() ?? 0) - (oy.min() ?? 0))
 
             if obs.count < p.minBins || span < p.minSpan {
-                devices.append(DeviceFix(id: id, name: name, status: .tooFew, readings: obs.count, medianRSSI: med))
+                devices.append(DeviceFix(id: id, name: name, status: .tooFew, readings: obs.count, medianRSSI: med, named: isNamed))
                 continue
             }
             let p10 = percentile(rssi, 0.1), p90 = percentile(rssi, 0.9)
             if (p10 > -58 && span > 2.5) || (p90 - p10 < 7 && med > -65 && span > 3) {
                 // Stays loud wherever you walk: it's travelling with you.
-                devices.append(DeviceFix(id: id, name: name, status: .carried, readings: obs.count, medianRSSI: med))
+                devices.append(DeviceFix(id: id, name: name, status: .carried, readings: obs.count, medianRSSI: med, named: isNamed))
                 continue
             }
 
@@ -115,7 +116,7 @@ enum Localizer {
             devices.append(DeviceFix(
                 id: id, name: name, status: radius <= p.maxRadius ? .located : .uncertain,
                 x: gx[best % nx], y: gy[best / nx], radius: radius,
-                readings: obs.count, medianRSSI: med))
+                readings: obs.count, medianRSSI: med, named: isNamed))
         }
 
         let located = devices.filter { $0.status == .located }
@@ -123,6 +124,60 @@ enum Localizer {
         let grid = HeatGrid(x0: minX, y0: minY, cell: p.cell, nx: nx, ny: ny,
                             values: heat, maxValue: heat.max() ?? 0)
         return AnalysisResult(devices: devices.sorted { $0.name < $1.name }, clusters: clusters, heat: grid)
+    }
+
+    // MARK: - Persistence across analyses
+
+    /// Keep each device's most confident position from the whole session.
+    ///
+    /// As you walk away from a device, its fit picks up many weak, noisy far-away readings
+    /// and can turn "uncertain", which made hot spots vanish. So a new fix only replaces
+    /// the remembered one if it is about as confident (or better); otherwise the remembered
+    /// position stands. A device that turns out to be carried by you is dropped.
+    static func mergeFixes(_ previous: [String: DeviceFix], with latest: [DeviceFix]) -> [String: DeviceFix] {
+        var out = previous
+        for f in latest {
+            guard let old = previous[f.id] else { out[f.id] = f; continue }
+            switch (old.status, f.status) {
+            case (_, .carried):
+                out[f.id] = f
+            case (.located, .located), (.uncertain, .located), (.uncertain, .uncertain):
+                if f.radius <= old.radius * 1.25 || old.status != .located { out[f.id] = f }
+            case (.located, _):
+                // keep the confident position we already had, but pick up a name if one arrived since
+                out[f.id]?.name = f.name
+                out[f.id]?.named = f.named || old.named
+            default:
+                out[f.id] = f
+            }
+        }
+        return out
+    }
+
+    /// Heat map built from remembered fixes: each device spreads one unit of "presence" as a
+    /// Gaussian with its confidence radius. Unlike the live fit, this doesn't fade as you leave.
+    static func heat(from fixes: [DeviceFix], poses: [Pose], cell: Double = 0.3, margin: Double = 2.0) -> HeatGrid? {
+        let used = fixes.filter { $0.status == .located || $0.status == .uncertain }
+        let xs = poses.map(\.x) + used.map(\.x), ys = poses.map(\.y) + used.map(\.y)
+        guard let minX0 = xs.min(), let maxX0 = xs.max(), let minY0 = ys.min(), let maxY0 = ys.max() else { return nil }
+        let minX = minX0 - margin, minY = minY0 - margin
+        let nx = max(1, Int(((maxX0 + margin - minX) / cell).rounded(.up)))
+        let ny = max(1, Int(((maxY0 + margin - minY) / cell).rounded(.up)))
+        var v = [Double](repeating: 0, count: nx * ny)
+        for f in used {
+            let sigma = max(f.radius, 0.5)
+            let weight = f.status == .located ? 1.0 : 0.4 // uncertain ones count, but less
+            let reach = Int((3 * sigma / cell).rounded(.up))
+            let ci = Int(((f.x - minX) / cell).rounded(.down)), cj = Int(((f.y - minY) / cell).rounded(.down))
+            let norm = weight / (2 * .pi * sigma * sigma) * cell * cell
+            for j in max(0, cj - reach)...min(ny - 1, cj + reach) {
+                for i in max(0, ci - reach)...min(nx - 1, ci + reach) {
+                    let dx = minX + (Double(i) + 0.5) * cell - f.x, dy = minY + (Double(j) + 0.5) * cell - f.y
+                    v[j * nx + i] += norm * exp(-(dx * dx + dy * dy) / (2 * sigma * sigma))
+                }
+            }
+        }
+        return HeatGrid(x0: minX, y0: minY, cell: cell, nx: nx, ny: ny, values: v, maxValue: v.max() ?? 0)
     }
 
     /// Single-linkage grouping: any two devices within `link` metres end up together.

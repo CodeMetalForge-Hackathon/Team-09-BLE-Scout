@@ -69,6 +69,14 @@ unit tests use a simulated room (`BLEScoutTests/TestWorld.swift`).
   radius. Devices that stay loud everywhere (your own earbuds or watch) are marked
   "carried by you" and excluded. Devices within 1.5 m of each other form a hot spot.
   The analysis re-runs every 2 seconds.
+- **Persistence:** each device's most confident position is remembered for the whole
+  session. A later estimate only replaces it if it's about as confident or better, so
+  hot spots (and the heat map, built from these remembered positions) stay put when
+  you walk far away.
+- **Unnamed devices:** off by default. The **Include unnamed devices** switch (Scan
+  screen) adds them, re-analysing the whole scan; readings are always recorded. Many
+  phones only show up this way, but unnamed devices change their Bluetooth address
+  every ~15 min, so one phone can appear as two devices on long scans.
 - **Mission** (`Model/Mission.swift`): hot spots are re-lettered on every analysis, so
   mission targets are tracked by *which devices they contain*. Order: most devices
   first, then nearest. "Arrived" = within the hot spot's size plus its position error

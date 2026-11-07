@@ -9,7 +9,7 @@ settings:
     CODE_SIGN_STYLE: Automatic
     DEVELOPMENT_TEAM: P2Y69G87UF  # Evana Gizzi (Apple Developer team)
     MARKETING_VERSION: "1.0"      # version shown in TestFlight
-    CURRENT_PROJECT_VERSION: "3"  # build number: bump for every upload
+    CURRENT_PROJECT_VERSION: "4"  # build number: bump for every upload
 targets:
   BLEScout:
     type: application

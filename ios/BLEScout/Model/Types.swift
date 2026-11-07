@@ -22,12 +22,13 @@ struct Pose: Codable {
 struct DeviceFix: Identifiable {
     enum Status: String { case located, uncertain, tooFew = "too few readings", carried = "carried by you" }
     let id: String
-    let name: String
+    var name: String
     let status: Status
     var x = 0.0, y = 0.0
     var radius = 0.0       // ~68% confidence radius, metres
     let readings: Int
     let medianRSSI: Double
+    var named = true       // broadcast a name (unnamed ones are only used when the user opts in)
 }
 
 struct Cluster: Identifiable {

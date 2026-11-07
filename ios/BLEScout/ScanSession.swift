@@ -18,7 +18,9 @@ final class ScanSession: ObservableObject {
     @Published private(set) var result: AnalysisResult?
     @Published private(set) var nearby: [NearbyDevice] = []
     @Published private(set) var namedHeard = 0
-    @Published private(set) var unnamedIgnored = 0
+    @Published private(set) var unnamedIgnored = 0   // unnamed devices heard (ignored unless included)
+    /// Also map devices that don't broadcast a name (many phones). Re-analyses the whole scan when flipped.
+    @Published var includeUnnamed = false { didSet { if includeUnnamed != oldValue { reanalyze(); refreshNearby() } } }
     @Published var params = LocalizerParams()
     @Published var screen: Screen = .scan
     @Published private(set) var mission = MissionPlanner()
@@ -32,6 +34,8 @@ final class ScanSession: ObservableObject {
     private var allPoses: [Pose] = []          // every pose; `poses` is a throttled copy for the UI
     private var lastPosePublish: TimeInterval = 0
     private var namedIDs = Set<String>(), unnamedIDs = Set<String>()
+    private var bestFixes: [String: DeviceFix] = [:]   // most confident position per device, whole session
+    private var knownNames: [String: String] = [:]
     private var analysisTask: Task<Void, Never>?
     private var lastNearbyUpdate: TimeInterval = 0
 
@@ -96,6 +100,7 @@ final class ScanSession: ObservableObject {
         poses = []; allPoses = []; samples = []; current = nil; result = nil; nearby = []
         mission.reset(); arrivedTargetID = nil; targetSignal = nil; signalHistory = []
         namedIDs = []; unnamedIDs = []; namedHeard = 0; unnamedIgnored = 0
+        bestFixes = [:]; knownNames = [:]
     }
 
     func reanalyze() { Task { await analyze() } }
@@ -116,13 +121,18 @@ final class ScanSession: ObservableObject {
 
     private func add(sample: BLESample) {
         guard running else { return }
-        if sample.name == nil {
-            // Only named devices are of interest; count the rest so the user knows they were seen.
-            if unnamedIDs.insert(sample.id).inserted { unnamedIgnored = unnamedIDs.count }
-            return
-        }
+        // Keep every reading, named or not, so the "include unnamed" switch can apply to the whole scan.
+        // Many devices only send their name in some adverts, so "named" is decided per device, not per reading.
         samples.append(sample)
-        if namedIDs.insert(sample.id).inserted { namedHeard = namedIDs.count }
+        if let name = sample.name {
+            knownNames[sample.id] = name
+            if namedIDs.insert(sample.id).inserted {
+                namedHeard = namedIDs.count
+                unnamedIgnored = unnamedIDs.subtracting(namedIDs).count
+            }
+        } else if unnamedIDs.insert(sample.id).inserted {
+            unnamedIgnored = unnamedIDs.subtracting(namedIDs).count
+        }
         if sample.t - lastNearbyUpdate > 0.5 { updateNearby(now: sample.t) }
     }
 
@@ -131,11 +141,17 @@ final class ScanSession: ObservableObject {
         var best: [String: NearbyDevice] = [:]
         for s in samples.reversed() {
             if now - s.t > 3 { break }
+            let name = knownNames[s.id]
+            if name == nil && !includeUnnamed { continue }
             if let b = best[s.id], b.rssi >= s.rssi { continue }
-            best[s.id] = NearbyDevice(id: s.id, name: s.name ?? "?", rssi: s.rssi)
+            best[s.id] = NearbyDevice(id: s.id, name: name ?? "Unnamed · \(s.id.prefix(4))", rssi: s.rssi)
         }
         nearby = best.values.sorted { $0.rssi > $1.rssi }
         updateTargetSignal(now: now, loudest: best)
+    }
+
+    private func refreshNearby() {
+        if let t = samples.last?.t { updateNearby(now: t) }
     }
 
     // MARK: - Mission
@@ -186,11 +202,19 @@ final class ScanSession: ObservableObject {
     }
 
     private func analyze() async {
-        let s = samples, p = allPoses, params = params
+        let named = namedIDs, include = includeUnnamed
+        let s = include ? samples : samples.filter { named.contains($0.id) }
+        let p = allPoses, params = params
         guard p.count > 1 else { return }
-        let r = await Task.detached(priority: .userInitiated) {
+        let fresh = await Task.detached(priority: .userInitiated) {
             Localizer.analyze(samples: s, poses: p, params: params)
         }.value
+        // Hot spots persist: remember each device's most confident position for the whole session.
+        bestFixes = Localizer.mergeFixes(bestFixes, with: fresh.devices)
+        let fixes = bestFixes.values.filter { include || $0.named }.sorted { $0.name < $1.name }
+        let clusters = Localizer.makeClusters(fixes.filter { $0.status == .located }, link: params.link)
+        let r = AnalysisResult(devices: fixes, clusters: clusters,
+                               heat: Localizer.heat(from: fixes, poses: p) ?? fresh.heat)
         result = r
         mission.update(with: r.clusters, from: current)
     }
