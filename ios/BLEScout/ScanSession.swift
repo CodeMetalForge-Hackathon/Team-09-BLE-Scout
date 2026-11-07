@@ -46,6 +46,7 @@ final class ScanSession: ObservableObject {
     private var lastPosePublish: TimeInterval = 0
     private var namedIDs = Set<String>(), unnamedIDs = Set<String>()
     private var bestFixes: [String: DeviceFix] = [:]   // most confident position per device, whole session
+    @Published private(set) var ignoredIDs = Set<String>() // "it's us": team / own devices, dropped for this scan
     private var knownNames: [String: String] = [:]
     private var analysisTask: Task<Void, Never>?
     private var lastNearbyUpdate: TimeInterval = 0
@@ -111,7 +112,7 @@ final class ScanSession: ObservableObject {
         poses = []; allPoses = []; samples = []; current = nil; result = nil; nearby = []
         mission.reset(); arrivedTargetID = nil; targetSignal = nil; signalHistory = []
         namedIDs = []; unnamedIDs = []; namedHeard = 0; unnamedIgnored = 0
-        bestFixes = [:]; knownNames = [:]
+        bestFixes = [:]; knownNames = [:]; ignoredIDs = []
     }
 
     func reanalyze() { Task { await analyze() } }
@@ -158,6 +159,7 @@ final class ScanSession: ObservableObject {
             if now - s.t > 3 { break }
             let name = knownNames[s.id]
             if name == nil && !includeUnnamed { continue }
+            if ignoredIDs.contains(s.id) { continue }
             if let b = best[s.id], b.rssi >= s.rssi { continue }
             best[s.id] = NearbyDevice(id: s.id, name: name ?? "Unnamed · \(s.id.prefix(4))", rssi: s.rssi)
         }
@@ -181,6 +183,30 @@ final class ScanSession: ObservableObject {
     func skipTarget() {
         mission.skipCurrent(from: current)
         afterTargetChange()
+    }
+
+    // MARK: - Ignore ("it's us")
+
+    /// Drop devices that belong to the team (or you) for the rest of this scan.
+    func ignore(deviceIDs: Set<String>) {
+        ignoredIDs.formUnion(deviceIDs)
+        for id in deviceIDs { bestFixes[id] = nil }
+        for t in mission.targets where !t.deviceIDs.isDisjoint(with: deviceIDs) && t.status != .cleared {
+            mission.drop(t.id)
+        }
+        afterTargetChange()
+        reanalyze()
+        refreshNearby()
+    }
+
+    func ignoreCurrentTarget() {
+        if let t = mission.current { ignore(deviceIDs: t.deviceIDs) }
+    }
+
+    func restoreIgnored() {
+        ignoredIDs = []
+        reanalyze()
+        refreshNearby()
     }
 
     // MARK: - Spin to pinpoint
@@ -273,8 +299,8 @@ final class ScanSession: ObservableObject {
     }
 
     private func analyze() async {
-        let named = namedIDs, include = includeUnnamed
-        let s = include ? samples : samples.filter { named.contains($0.id) }
+        let named = namedIDs, include = includeUnnamed, ignored = ignoredIDs
+        let s = samples.filter { !ignored.contains($0.id) && (include || named.contains($0.id)) }
         let p = allPoses, params = params
         guard p.count > 1 else { return }
         let fresh = await Task.detached(priority: .userInitiated) {
@@ -282,7 +308,7 @@ final class ScanSession: ObservableObject {
         }.value
         // Hot spots persist: remember each device's most confident position for the whole session.
         bestFixes = Localizer.mergeFixes(bestFixes, with: fresh.devices)
-        let fixes = bestFixes.values.filter { include || $0.named }.sorted { $0.name < $1.name }
+        let fixes = bestFixes.values.filter { (include || $0.named) && !ignored.contains($0.id) }.sorted { $0.name < $1.name }
         let clusters = Localizer.makeClusters(fixes.filter { $0.status.isPlaced }, link: params.link)
         let r = AnalysisResult(devices: fixes, clusters: clusters,
                                heat: Localizer.heat(from: fixes, poses: p) ?? fresh.heat)

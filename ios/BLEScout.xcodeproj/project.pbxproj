@@ -12,6 +12,7 @@
 		132E27DF4A209649BB2C21FA /* MissionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44BB7FE75E56EBF29A2F2BB7 /* MissionTests.swift */; };
 		171B25FA7A40EB4E60E3A382 /* PoseTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 915D4098C6C790AD2B05D1C9 /* PoseTracker.swift */; };
 		283D55D647FCB64F6D29DCE8 /* BLEScoutApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C549A2854382C8BCF016755E /* BLEScoutApp.swift */; };
+		2E1C7150FAEA2361A40B99EC /* SensitivityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F9D9C22D18E99AC8F7E88A6 /* SensitivityTests.swift */; };
 		45C0F6ACB625B4E03B51F7D2 /* MapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 631602BC3067CB5AFC19699A /* MapView.swift */; };
 		4AC0246CA5C0D82C2F647882 /* MissionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06FC9D17274C4DC16D4AAB96 /* MissionView.swift */; };
 		4DF26ADFB6126818307956D9 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = FFF58058408DE89591155A52 /* Assets.xcassets */; };
@@ -41,6 +42,7 @@
 		13E3BC089679323857863E2D /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		173780A1A7F54488D979749C /* Localizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Localizer.swift; sourceTree = "<group>"; };
 		44BB7FE75E56EBF29A2F2BB7 /* MissionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MissionTests.swift; sourceTree = "<group>"; };
+		5F9D9C22D18E99AC8F7E88A6 /* SensitivityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SensitivityTests.swift; sourceTree = "<group>"; };
 		631602BC3067CB5AFC19699A /* MapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapView.swift; sourceTree = "<group>"; };
 		693E8B49F94C5F0DBE671A80 /* BLEScoutTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = BLEScoutTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		6FD201F726B882E9873BF99E /* Types.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Types.swift; sourceTree = "<group>"; };
@@ -128,6 +130,7 @@
 				DB9256FCCFC53D7D7123F95B /* LocalizerTests.swift */,
 				44BB7FE75E56EBF29A2F2BB7 /* MissionTests.swift */,
 				BB1697EC14865A197188D5E6 /* PersistenceTests.swift */,
+				5F9D9C22D18E99AC8F7E88A6 /* SensitivityTests.swift */,
 				F388C56CE779613B6DC2379F /* SpinTests.swift */,
 				73072DED04A40A5C92BF7429 /* TestWorld.swift */,
 			);
@@ -249,6 +252,7 @@
 				E012AFE14EDABFED04EEA22A /* LocalizerTests.swift in Sources */,
 				132E27DF4A209649BB2C21FA /* MissionTests.swift in Sources */,
 				913AF6476FF03CF54ED11581 /* PersistenceTests.swift in Sources */,
+				2E1C7150FAEA2361A40B99EC /* SensitivityTests.swift in Sources */,
 				C5BFDC18E02C3D464F6C27FF /* SpinTests.swift in Sources */,
 				9A69E0DC7B3BF41E3F3F0665 /* TestWorld.swift in Sources */,
 			);
@@ -300,7 +304,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 7;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = P2Y69G87UF;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -360,7 +364,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 7;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = P2Y69G87UF;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;

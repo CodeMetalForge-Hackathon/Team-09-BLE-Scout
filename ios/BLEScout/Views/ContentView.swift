@@ -180,8 +180,11 @@ struct HotSpotListView: View {
                         }
                         Text(Direction.fromStart(x: c.x, y: c.y)).font(.subheadline)
                         Text(c.names.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary)
-                        Text(String(format: "Spread ≈ %.1f m · position ±%.1f m", c.spread, c.uncertainty))
+                        Text(String(format: "Spread ≈ %.1f m · position ±%.1f m", c.spread, c.uncertainty)
+                             + (c.roughCount > 0 ? " · \(c.roughCount) rough" : ""))
                             .font(.caption2).foregroundStyle(.secondary)
+                        Button("It's us · ignore") { session.ignore(deviceIDs: Set(c.deviceIDs)) }
+                            .font(.caption).buttonStyle(.borderless).foregroundStyle(.secondary)
                     }
                     .padding(.vertical, 4)
                 }
@@ -189,6 +192,15 @@ struct HotSpotListView: View {
                 Text(session.running ? "Keep walking. Hot spots appear once devices are heard from several spots."
                                      : "Press Start and walk around, any route.")
                     .foregroundStyle(.secondary)
+            }
+            if !session.ignoredIDs.isEmpty {
+                Section {
+                    Button("Restore \(session.ignoredIDs.count) ignored device\(session.ignoredIDs.count == 1 ? "" : "s")") {
+                        session.restoreIgnored()
+                    }
+                } footer: {
+                    Text("Ignored as team or own gear for this scan.")
+                }
             }
             if let devs = session.result?.devices, !devs.isEmpty {
                 Section("All devices heard (\(devs.count))") {
@@ -221,7 +233,7 @@ extension HotSpotListView {
         case .located: return String(format: "±%.1f m", d.radius)
         case .uncertain, .approximate: return String(format: "rough ±%.0f m", d.radius)
         case .carried: return "ignored"
-        case .tooFew: return "not placed"
+        case .tooFew: return "waiting"
         }
     }
 
@@ -236,7 +248,7 @@ extension HotSpotListView {
         case .carried:
             return "Stayed loud wherever you walked, so it's probably on you."
         case .tooFew:
-            return "Not enough readings."
+            return "Waiting: walk a few metres so the app can tell whether it's on you."
         }
     }
 }

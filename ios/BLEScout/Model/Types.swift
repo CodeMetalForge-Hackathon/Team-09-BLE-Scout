@@ -48,9 +48,12 @@ struct Cluster: Identifiable {
     let y: Double
     let names: [String]
     let deviceIDs: [String]
+    var roughCount = 0      // members without a confident position
     let spread: Double      // how far members sit from the centre, metres
     let uncertainty: Double // typical position error of members, metres
     var count: Int { deviceIDs.count }
+    /// Devices with proper positions count fully, rough ones half.
+    var score: Double { Double(count - roughCount) + 0.5 * Double(roughCount) }
 }
 
 struct HeatGrid {

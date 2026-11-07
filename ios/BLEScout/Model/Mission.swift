@@ -14,12 +14,16 @@ struct MissionTarget: Identifiable, Equatable {
     var spread: Double
     var uncertainty: Double
     var status: Status = .pending
+    var roughCount = 0          // devices without a confident position
     /// Set by "spin to pinpoint": a more precise spot to head for than the hot spot's centre.
     var pinX: Double? = nil
     var pinY: Double? = nil
     var pinNote: String? = nil
     var count: Int { deviceIDs.count }
     var pinned: Bool { pinX != nil }
+    /// Ranking weight: confidently placed devices count 1, rough ones 0.5.
+    var score: Double { Double(count - roughCount) + 0.5 * Double(roughCount) }
+    var allRough: Bool { roughCount == count }
 
     /// Where to walk to: the pinpointed spot if there is one, else the hot spot's centre.
     var goalX: Double { pinX ?? x }
@@ -27,7 +31,7 @@ struct MissionTarget: Identifiable, Equatable {
 
     /// How close counts as "there": 1 m for a pinpointed spot, else the hot spot's size
     /// plus its position error (1-3 m).
-    var arrivalRadius: Double { pinned ? 1.0 : max(1.0, min(spread + uncertainty, 3.0)) }
+    var arrivalRadius: Double { pinned ? 1.0 : max(1.0, min(spread + uncertainty, 2.0)) }
 }
 
 /// Keeps an ordered plan of hot spots to visit: most devices first.
@@ -60,9 +64,10 @@ struct MissionPlanner {
                 targets[i].names = c.names
                 targets[i].x = c.x; targets[i].y = c.y
                 targets[i].spread = c.spread; targets[i].uncertainty = c.uncertainty
+                targets[i].roughCount = c.roughCount
             } else {
                 let t = MissionTarget(id: UUID(), deviceIDs: devs, names: c.names, x: c.x, y: c.y,
-                                      spread: c.spread, uncertainty: c.uncertainty)
+                                      spread: c.spread, uncertainty: c.uncertainty, roughCount: c.roughCount)
                 targets.append(t)
                 matched.insert(t.id)
             }
@@ -76,9 +81,9 @@ struct MissionPlanner {
     /// Most devices first; among equals, the closer one first. Skipped ones go last.
     mutating func rank(from pose: Pose?) {
         let px = pose?.x ?? 0, py = pose?.y ?? 0
-        func key(_ t: MissionTarget) -> (Int, Int, Double) {
+        func key(_ t: MissionTarget) -> (Int, Double, Double) {
             let order = t.status == .pending ? 0 : t.status == .skipped ? 1 : 2
-            return (order, -t.count, hypot(t.x - px, t.y - py))
+            return (order, -t.score, hypot(t.x - px, t.y - py))
         }
         targets.sort { key($0) < key($1) }
     }
@@ -88,6 +93,9 @@ struct MissionPlanner {
         guard let i = targets.firstIndex(where: { $0.id == id }) else { return }
         targets[i].pinX = x; targets[i].pinY = y; targets[i].pinNote = note
     }
+
+    /// Forget a target entirely (e.g. it was the team's own devices).
+    mutating func drop(_ id: UUID) { targets.removeAll { $0.id == id } }
 
     mutating func clearCurrent(from pose: Pose?) { setCurrent(.cleared, pose) }
     mutating func skipCurrent(from pose: Pose?) { setCurrent(.skipped, pose) }

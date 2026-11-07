@@ -19,6 +19,7 @@ struct LocalizerParams {
     var link = 1.5            // devices closer than this share a cluster
     var maxRadius = 2.5       // fits less certain than this are labelled "uncertain" (still placed)
     var margin = 4.0          // search this far beyond the area you walked
+    var warmupMeters = 3.0    // no rough placements until you've walked this far (so "carried" can be judged)
 }
 
 enum Localizer {
@@ -52,6 +53,8 @@ enum Localizer {
         let gx = (0..<nx).map { minX + (Double($0) + 0.5) * p.cell }
         let gy = (0..<ny).map { minY + (Double($0) + 0.5) * p.cell }
         var heat = [Double](repeating: 0, count: nx * ny)
+        var walked = 0.0
+        for (a, b) in zip(poses, poses.dropFirst()) { walked += hypot(b.x - a.x, b.y - a.y) }
 
         var devices: [DeviceFix] = []
         for (id, devBins) in bins {
@@ -66,9 +69,16 @@ enum Localizer {
             let span = max((ox.max() ?? 0) - (ox.min() ?? 0), (oy.max() ?? 0) - (oy.min() ?? 0))
 
             let p10 = percentile(rssi, 0.1), p90 = percentile(rssi, 0.9)
-            if (p10 > -58 && span > 2.5) || (p90 - p10 < 7 && med > -65 && span > 3) {
-                // Stays loud wherever you walk: it's travelling with you.
+            if (p10 > -58 && span > 1.5) || (p90 - p10 < 7 && med > -65 && span > 2) {
+                // Stays loud wherever you walk: it's travelling with you (your watch, earbuds,
+                // a teammate walking beside you).
                 devices.append(DeviceFix(id: id, name: name, status: .carried, readings: obs.count, medianRSSI: med, named: isNamed))
+                continue
+            }
+            if (obs.count < p.minBins || span < p.minSpan) && walked < p.warmupMeters {
+                // Just started: anything nearby is probably on you or your team. Wait until you've
+                // walked a bit and the "carried" check has something to go on.
+                devices.append(DeviceFix(id: id, name: name, status: .tooFew, readings: obs.count, medianRSSI: med, named: isNamed))
                 continue
             }
             if obs.count < p.minBins || span < p.minSpan {
@@ -203,7 +213,9 @@ enum Localizer {
         var clusters = groups.map { m -> (x: Double, y: Double, m: [DeviceFix]) in
             (m.map(\.x).reduce(0, +) / Double(m.count), m.map(\.y).reduce(0, +) / Double(m.count), m)
         }
-        clusters.sort { $0.m.count != $1.m.count ? $0.m.count > $1.m.count : hypot($0.x, $0.y) < hypot($1.x, $1.y) }
+        // Rank by how many devices, counting rough/uncertain ones as half.
+        func score(_ m: [DeviceFix]) -> Double { m.reduce(0) { $0 + ($1.status == .located ? 1 : 0.5) } }
+        clusters.sort { score($0.m) != score($1.m) ? score($0.m) > score($1.m) : hypot($0.x, $0.y) < hypot($1.x, $1.y) }
         return clusters.enumerated().map { i, c in
             let reach = c.m.map { hypot($0.x - c.x, $0.y - c.y) }.max() ?? 0
             return Cluster(
@@ -211,6 +223,7 @@ enum Localizer {
                 x: c.x, y: c.y,
                 names: c.m.map(\.name).sorted(),
                 deviceIDs: c.m.map(\.id),
+                roughCount: c.m.filter { $0.status != .located }.count,
                 spread: max(reach + 0.3, 0.6),
                 uncertainty: median(c.m.map(\.radius)))
         }

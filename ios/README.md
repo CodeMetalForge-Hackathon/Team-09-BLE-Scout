@@ -80,6 +80,11 @@ unit tests use a simulated room (`BLEScoutTests/TestWorld.swift`).
   suggests. Rough and noisy ("uncertain") devices still count toward hot spots; they
   show as hollow dots, and the device list says how to firm them up. Only devices
   you're carrying are excluded.
+- **Not your own devices:** no rough placements until you've walked 3 m, and anything
+  that stays loud over 1.5 m of walking is treated as "carried by you". Teammates or
+  your own gear can be dropped with **It's us · ignore** (Mission card or Hot spots
+  list); **Restore** brings them back. Rough-only hot spots rank lower (rough devices
+  count half), and "You're there" triggers within at most 2 m.
 - **Persistence:** each device's most confident position is remembered for the whole
   session. A later estimate only replaces it if it's about as confident or better, so
   hot spots (and the heat map, built from these remembered positions) stay put when

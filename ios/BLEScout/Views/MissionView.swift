@@ -36,6 +36,7 @@ struct MissionView: View {
             HStack {
                 Text("Hot spot \(rank) of \(plan.remaining.count)").font(.headline)
                 if t.status == .skipped { Text("skipped earlier").font(.caption).foregroundStyle(.secondary) }
+                if t.allRough { Text("rough").font(.caption.bold()).foregroundStyle(.yellow) }
                 Spacer()
                 Text("\(t.count) device\(t.count == 1 ? "" : "s")")
                     .font(.headline).foregroundStyle(.orange)
@@ -96,6 +97,12 @@ struct MissionView: View {
                         .foregroundStyle(.black)
                 }
                 .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.plain)
+
+            Button { session.ignoreCurrentTarget() } label: {
+                Label("It's us (team or own gear) · ignore", systemImage: "person.2.slash")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
 
