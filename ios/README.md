@@ -1,9 +1,9 @@
 # BLE Scout (iOS)
 
-Walk around a room with your iPhone, along any route. The app tracks where you are
-relative to your start point (ARKit), listens to every **named** Bluetooth device
-nearby, and finds **clusters** of them. Each cluster shows a distance and direction
-from you, a position relative to the start, and a pin in the camera view.
+Walk around an area with your iPhone, along any route, and find **hot spots**: places
+where several **named** Bluetooth devices (and so, likely, people) are. Then switch to
+**Mission** mode for simple live directions to the hot spots with the most devices
+first.
 
 ## Run it on your iPhone
 
@@ -30,35 +30,49 @@ reinstall.
 
 ## Using it
 
-1. Stand at your start point, facing into the room, and tap **Start**. The direction
-   you face becomes "ahead" on the map.
-2. Walk slowly around the room on any route, holding the phone up with the camera
-   facing forward. ARKit needs to see things, so avoid pointing it at blank walls or
-   the floor. Go past each area at least once, and loop back through the middle.
-3. Watch it build:
-   - **Map:** heat map of likely device positions, your path, START, and you (blue arrow).
-   - **Clusters:** each group of named devices, with "3.4 m · ahead-left" from where
-     you stand now, its position relative to the start, and the device names.
-   - **Nearby:** named devices loudest right now (walk toward the bar going up).
-   - **Camera view:** red pins float where each cluster is.
-4. Tap **Stop** when done. The share button exports the raw data (JSON) for later
-   analysis.
+1. **Start:** stand at your start point, face into the area, and tap **Start**. The
+   direction you face becomes "ahead" on the map.
+2. **Scan:** walk slowly on any route, holding the phone upright with the back camera
+   uncovered. The camera is only used for position tracking; nothing is shown or saved.
+   Hot spots build up on the map as you walk:
+   - **Map:** heat map, your path, START, and hot-spot circles labelled with device counts.
+   - **Hot spots:** each one with its device names, a distance and direction from you,
+     and its position relative to the start.
+   - **Nearby:** named devices loudest right now.
+3. **Mission:** tap **Plan mission to hot spots** (or the Mission tab, available any time). The app ranks
+   hot spots by device count (ties: nearest first) and guides you to each in turn:
+   - a big arrow that turns as you turn, plus "Turn left · 4.2 m" style instructions
+   - a live signal meter for the target's devices: **warmer** or **colder**
+   - a buzz and "You're there" on arrival
+   - **Cleared · next** marks it done and moves on; **Skip** sends it to the end of the list.
 
-**Demo** mode (the switch next to Start) runs a fake room with a virtual walker. It's
-the only mode in the Simulator, which has no camera or Bluetooth.
+   Scanning keeps running during a mission, so positions keep improving and new hot
+   spots join the plan. Cleared hot spots only come back if several new devices show
+   up there.
+4. **Pause** stops scanning; **Resume** continues the same session with positions
+   intact (resume near where you paused). The **⋯** menu (while paused) exports the
+   raw data (JSON) or starts a **New scan** from scratch.
+
+The app needs a real iPhone: the Simulator has no Bluetooth or motion tracking. The
+unit tests use a simulated room (`BLEScoutTests/TestWorld.swift`).
 
 ## How it works
 
 - **Position** (`Sources/PoseTracker.swift`): ARKit world tracking (camera + motion
-  sensors). Accurate to centimetres over a room; drifts slowly over long walks.
+  sensors) with no camera preview. Accurate to centimetres over a room; drifts slowly
+  over long walks.
 - **Bluetooth** (`Sources/BLEScanner.swift`): CoreBluetooth scan with duplicates on.
   Only devices that broadcast a name are kept; unnamed ones are counted, then ignored.
 - **Localization** (`Model/Localizer.swift`): readings are grouped into 0.5 m spots
   along your path. A path-loss model (`rssi = P0 − 10·n·log10(d)`) is fitted per
   device on a grid around the area you walked, which gives a position and a confidence
   radius. Devices that stay loud everywhere (your own earbuds or watch) are marked
-  "carried by you" and excluded. Devices within 1.5 m of each other form a cluster.
+  "carried by you" and excluded. Devices within 1.5 m of each other form a hot spot.
   The analysis re-runs every 2 seconds.
+- **Mission** (`Model/Mission.swift`): hot spots are re-lettered on every analysis, so
+  mission targets are tracked by *which devices they contain*. Order: most devices
+  first, then nearest. "Arrived" = within the hot spot's size plus its position error
+  (1–3 m).
 
 ## Limits
 

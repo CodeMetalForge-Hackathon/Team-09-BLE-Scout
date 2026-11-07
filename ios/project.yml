@@ -9,7 +9,7 @@ settings:
     CODE_SIGN_STYLE: Automatic
     DEVELOPMENT_TEAM: P2Y69G87UF  # Evana Gizzi (Apple Developer team)
     MARKETING_VERSION: "1.0"      # version shown in TestFlight
-    CURRENT_PROJECT_VERSION: "1"  # build number: bump for every upload
+    CURRENT_PROJECT_VERSION: "3"  # build number: bump for every upload
 targets:
   BLEScout:
     type: application
@@ -30,7 +30,7 @@ targets:
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         NSBluetoothAlwaysUsageDescription: BLE Scout listens for nearby Bluetooth devices to map where they are in the room.
-        NSCameraUsageDescription: BLE Scout uses the camera (ARKit) to track where you walk, relative to your start point.
+        NSCameraUsageDescription: BLE Scout uses the camera only to track where you walk (ARKit). Nothing is shown, recorded or saved.
   BLEScoutTests:
     type: bundle.unit-test
     platform: iOS

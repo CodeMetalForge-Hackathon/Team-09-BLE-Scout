@@ -5,14 +5,15 @@ struct MapView: View {
     let poses: [Pose]
     let current: Pose?
     let result: AnalysisResult?
-    var truth: [DemoWorld.Device] = []
+    var mission: MissionPlanner? = nil
 
     var body: some View {
         Canvas { ctx, size in
             let clusters = result?.clusters ?? []
             // Fit everything we know about (path, clusters, start) with some padding.
-            var xs = poses.map(\.x) + clusters.map(\.x) + [0]
-            var ys = poses.map(\.y) + clusters.map(\.y) + [0]
+            let targets = mission?.targets ?? []
+            var xs = poses.map(\.x) + clusters.map(\.x) + targets.map(\.x) + [0]
+            var ys = poses.map(\.y) + clusters.map(\.y) + targets.map(\.y) + [0]
             xs += [xs.min()! - 1.5, xs.max()! + 1.5]
             ys += [ys.min()! - 1.5, ys.max()! + 1.5]
             let minX = xs.min()!, maxX = max(xs.max()!, minX + 4)
@@ -50,23 +51,36 @@ struct MapView: View {
                 ctx.stroke(path, with: .color(.cyan.opacity(0.7)), lineWidth: 1.5)
             }
 
-            // demo-mode truth
-            for d in truth where !d.carried {
-                let p = P(d.x, d.y)
-                var x = Path()
-                x.move(to: CGPoint(x: p.x - 4, y: p.y - 4)); x.addLine(to: CGPoint(x: p.x + 4, y: p.y + 4))
-                x.move(to: CGPoint(x: p.x + 4, y: p.y - 4)); x.addLine(to: CGPoint(x: p.x - 4, y: p.y + 4))
-                ctx.stroke(x, with: .color(d.name == nil ? .gray : .green), lineWidth: 1.5)
-            }
-
             // located devices
             for d in result?.devices ?? [] where d.status == .located {
                 let p = P(d.x, d.y)
                 ctx.fill(Path(ellipseIn: CGRect(x: p.x - 2.5, y: p.y - 2.5, width: 5, height: 5)), with: .color(.white))
             }
 
-            // clusters
-            for c in clusters {
+            // mission targets: numbered in visiting order, current one highlighted, route to it
+            if let mission {
+                let order = mission.remaining
+                if let cur = mission.current, let me = current {
+                    var route = Path()
+                    route.move(to: P(me.x, me.y)); route.addLine(to: P(cur.x, cur.y))
+                    ctx.stroke(route, with: .color(.orange), style: StrokeStyle(lineWidth: 3, dash: [8, 6]))
+                }
+                for t in targets {
+                    let p = P(t.x, t.y), r = max(t.arrivalRadius * k, 16)
+                    let isCurrent = t.id == mission.current?.id
+                    let color: Color = t.status == .cleared ? .green : isCurrent ? .orange : .red
+                    ctx.stroke(Path(ellipseIn: CGRect(x: p.x - r, y: p.y - r, width: 2 * r, height: 2 * r)),
+                               with: .color(color), lineWidth: isCurrent ? 4 : 2)
+                    let label = t.status == .cleared ? "✓" : "\((order.firstIndex { $0.id == t.id } ?? 0) + 1)"
+                    ctx.draw(Text(label).font(.system(size: isCurrent ? 18 : 14, weight: .heavy)).foregroundColor(color),
+                             at: p)
+                    ctx.draw(Text("\(t.count) dev").font(.system(size: 11, weight: .semibold)).foregroundColor(color.opacity(0.8)),
+                             at: CGPoint(x: p.x + r + 4, y: p.y), anchor: .leading)
+                }
+            }
+
+            // clusters (scan view)
+            for c in clusters where mission == nil {
                 let p = P(c.x, c.y), r = max(c.spread * k, 14)
                 ctx.stroke(Path(ellipseIn: CGRect(x: p.x - r, y: p.y - r, width: 2 * r, height: 2 * r)),
                            with: .color(.red), lineWidth: 2.5)

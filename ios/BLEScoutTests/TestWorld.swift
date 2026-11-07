@@ -1,4 +1,5 @@
 import Foundation
+@testable import BLEScout
 
 /// Demo mode: a fake room with named and unnamed devices, and a fake walker who
 /// wanders between random spots. Feeds the app exactly what ARKit and Bluetooth
@@ -13,6 +14,8 @@ final class DemoWorld {
     }
 
     var onPose: ((Pose) -> Void)?
+    /// When set (Mission mode), the walker heads here and waits instead of wandering.
+    var goal: (x: Double, y: Double)?
     var onSample: ((BLESample) -> Void)?
 
     private(set) var devices: [Device]
@@ -57,9 +60,13 @@ final class DemoWorld {
         tick += 1
 
         // Walk toward the current target; pick a new random one on arrival.
+        if let goal { target = goal }
         let dx = target.x - pos.x, dy = target.y - pos.y
         let dist = (dx * dx + dy * dy).squareRoot()
-        if dist < 0.2 {
+        if goal != nil && dist < 0.5 {
+            // arrived at the mission target: stand still and look around
+            heading += 0.03
+        } else if dist < 0.2 {
             target = (bounds.minX + rng.uniform() * (bounds.maxX - bounds.minX),
                       bounds.minY + rng.uniform() * (bounds.maxY - bounds.minY))
         } else {

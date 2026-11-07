@@ -1,12 +1,15 @@
 import Foundation
 import SwiftUI
+import UIKit
 
 /// Ties together position tracking, Bluetooth, and the live analysis.
 @MainActor
 final class ScanSession: ObservableObject {
-    enum Mode: String, CaseIterable, Identifiable { case live = "Live", demo = "Demo"; var id: String { rawValue } }
+    enum Screen: String, CaseIterable, Identifiable { case scan = "Scan", mission = "Mission"; var id: String { rawValue } }
 
-    @Published var mode: Mode = PoseTracker.isSupported ? .live : .demo
+    /// Live signal from the current mission target's devices: are we getting warmer?
+    struct TargetSignal { let rssi: Int; let trend: Int } // trend: +1 warmer, -1 colder, 0 steady
+
     @Published private(set) var running = false
     @Published private(set) var poses: [Pose] = []
     @Published private(set) var current: Pose?
@@ -17,17 +20,25 @@ final class ScanSession: ObservableObject {
     @Published private(set) var namedHeard = 0
     @Published private(set) var unnamedIgnored = 0
     @Published var params = LocalizerParams()
+    @Published var screen: Screen = .scan
+    @Published private(set) var mission = MissionPlanner()
+    @Published private(set) var arrivedTargetID: UUID?
+    @Published private(set) var targetSignal: TargetSignal?
+    private var signalHistory: [(t: TimeInterval, rssi: Int)] = []
 
     let tracker = PoseTracker()
     private let scanner = BLEScanner()
-    private(set) var demo: DemoWorld?
     private var samples: [BLESample] = []
+    private var allPoses: [Pose] = []          // every pose; `poses` is a throttled copy for the UI
+    private var lastPosePublish: TimeInterval = 0
     private var namedIDs = Set<String>(), unnamedIDs = Set<String>()
     private var analysisTask: Task<Void, Never>?
     private var lastNearbyUpdate: TimeInterval = 0
 
     var liveSupported: Bool { PoseTracker.isSupported }
-    var hasData: Bool { poses.count > 1 }
+    var hasData: Bool { allPoses.count > 1 }
+    /// Stopped part-way: can resume without losing position.
+    var paused: Bool { !running && hasData }
 
     init() {
         tracker.onPose = { [weak self] p in Task { @MainActor in self?.add(pose: p) } }
@@ -38,23 +49,41 @@ final class ScanSession: ObservableObject {
 
     // MARK: - Control
 
+    /// New session: position (0, 0) = where the phone is now.
     func start() {
+        guard liveSupported else { return }
         reset()
+        screen = .scan
+        trackingStatus = "Starting… move the phone slowly"
+        tracker.start()
+        begin()
+    }
+
+    /// Stop scanning for now; position tracking can pick up where it left off.
+    func pause() {
+        running = false
+        UIApplication.shared.isIdleTimerDisabled = false
+        analysisTask?.cancel()
+        tracker.pause()
+        scanner.stop()
+        trackingStatus = "Paused"
+        Task { await analyze() }
+    }
+
+    /// Continue the same session: ARKit keeps its coordinate frame, so hot spots stay put.
+    /// Best results if you resume close to where you paused.
+    func resume() {
+        guard paused else { return }
+        trackingStatus = "Resuming… move the phone slowly"
+        tracker.resume()
+        begin()
+    }
+
+    private func begin() {
         running = true
         UIApplication.shared.isIdleTimerDisabled = true // keep the screen on while walking
-        if mode == .live {
-            trackingStatus = "Starting… move the phone slowly"
-            tracker.start()
-            scanner.start()
-        } else {
-            let world = DemoWorld()
-            world.onPose = { [weak self] p in self?.add(pose: p) }
-            world.onSample = { [weak self] s in self?.add(sample: s) }
-            demo = world
-            trackingStatus = "Demo walker"
-            bluetoothStatus = "Demo devices"
-            world.start()
-        }
+        scanner.start()
+        analysisTask?.cancel()
         analysisTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 2_000_000_000)
@@ -63,18 +92,9 @@ final class ScanSession: ObservableObject {
         }
     }
 
-    func stop() {
-        running = false
-        UIApplication.shared.isIdleTimerDisabled = false
-        analysisTask?.cancel()
-        tracker.pause()
-        scanner.stop()
-        demo?.stop()
-        Task { await analyze() }
-    }
-
     func reset() {
-        poses = []; samples = []; current = nil; result = nil; nearby = []
+        poses = []; allPoses = []; samples = []; current = nil; result = nil; nearby = []
+        mission.reset(); arrivedTargetID = nil; targetSignal = nil; signalHistory = []
         namedIDs = []; unnamedIDs = []; namedHeard = 0; unnamedIgnored = 0
     }
 
@@ -84,8 +104,14 @@ final class ScanSession: ObservableObject {
 
     private func add(pose: Pose) {
         guard running else { return }
-        poses.append(pose)
-        current = pose
+        allPoses.append(pose)
+        checkArrival(pose)
+        // Redraw the screen ~4x a second, not on every 10 Hz pose: keeps taps responsive and saves battery.
+        if pose.t - lastPosePublish >= 0.25 {
+            lastPosePublish = pose.t
+            poses = allPoses
+            current = pose
+        }
     }
 
     private func add(sample: BLESample) {
@@ -109,27 +135,75 @@ final class ScanSession: ObservableObject {
             best[s.id] = NearbyDevice(id: s.id, name: s.name ?? "?", rssi: s.rssi)
         }
         nearby = best.values.sorted { $0.rssi > $1.rssi }
+        updateTargetSignal(now: now, loudest: best)
+    }
+
+    // MARK: - Mission
+
+    var hasHotSpots: Bool { !(result?.clusters.isEmpty ?? true) }
+
+    func clearTarget() {
+        mission.clearCurrent(from: current)
+        afterTargetChange()
+    }
+
+    func skipTarget() {
+        mission.skipCurrent(from: current)
+        afterTargetChange()
+    }
+
+    private func afterTargetChange() {
+        arrivedTargetID = nil
+        targetSignal = nil
+        signalHistory = []
+    }
+
+    private func checkArrival(_ p: Pose) {
+        guard screen == .mission, let t = mission.current else { return }
+        let d = hypot(t.x - p.x, t.y - p.y)
+        if d <= t.arrivalRadius, arrivedTargetID != t.id {
+            arrivedTargetID = t.id
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+        } else if d > t.arrivalRadius + 1.0, arrivedTargetID == t.id {
+            arrivedTargetID = nil // walked away again
+        }
+    }
+
+    private func updateTargetSignal(now: TimeInterval, loudest: [String: NearbyDevice]) {
+        guard let t = mission.current else { targetSignal = nil; return }
+        guard let rssi = t.deviceIDs.compactMap({ loudest[$0]?.rssi }).max() else { targetSignal = nil; return }
+        signalHistory.append((now, rssi))
+        signalHistory.removeAll { now - $0.t > 8 }
+        // compare the last ~2 s with what we heard ~4-6 s ago
+        let recent = signalHistory.filter { now - $0.t <= 2 }.map(\.rssi)
+        let earlier = signalHistory.filter { now - $0.t > 4 }.map(\.rssi)
+        var trend = 0
+        if !recent.isEmpty, !earlier.isEmpty {
+            let delta = Double(recent.reduce(0, +)) / Double(recent.count) - Double(earlier.reduce(0, +)) / Double(earlier.count)
+            trend = delta > 3 ? 1 : delta < -3 ? -1 : 0
+        }
+        targetSignal = TargetSignal(rssi: rssi, trend: trend)
     }
 
     private func analyze() async {
-        let s = samples, p = poses, params = params
+        let s = samples, p = allPoses, params = params
         guard p.count > 1 else { return }
         let r = await Task.detached(priority: .userInitiated) {
             Localizer.analyze(samples: s, poses: p, params: params)
         }.value
         result = r
+        mission.update(with: r.clusters, from: current)
     }
 
     // MARK: - Export
 
     struct Export: Codable {
-        let mode: String
         let poses: [Pose]
         let samples: [BLESample]
     }
 
     func exportFile() -> URL? {
-        let data = try? JSONEncoder().encode(Export(mode: mode.rawValue, poses: poses, samples: samples))
+        let data = try? JSONEncoder().encode(Export(poses: allPoses, samples: samples))
         let f = DateFormatter(); f.dateFormat = "yyyyMMdd-HHmmss"
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("blescout-\(f.string(from: Date())).json")
         guard let data, (try? data.write(to: url)) != nil else { return nil }

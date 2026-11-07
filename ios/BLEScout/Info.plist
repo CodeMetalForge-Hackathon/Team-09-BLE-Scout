@@ -25,7 +25,7 @@
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>BLE Scout listens for nearby Bluetooth devices to map where they are in the room.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>BLE Scout uses the camera (ARKit) to track where you walk, relative to your start point.</string>
+	<string>BLE Scout uses the camera only to track where you walk (ARKit). Nothing is shown, recorded or saved.</string>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>
