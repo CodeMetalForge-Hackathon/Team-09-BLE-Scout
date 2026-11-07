@@ -131,7 +131,10 @@ enum Localizer {
             // radius of the smallest region holding 68% of the probability
             var acc = 0.0, cells = 0
             for v in prob.sorted(by: >) { acc += v; cells += 1; if acc >= 0.68 { break } }
-            let radius = (Double(cells) * p.cell * p.cell / .pi).squareRoot()
+            // Don't let a fit from very few spots look precise (it would lock in as "best"):
+            // at least ±2 m from 3 spots, shrinking as more spots come in.
+            let evidenceFloor = 2.0 * (3.0 / Double(obs.count)).squareRoot()
+            let radius = max((Double(cells) * p.cell * p.cell / .pi).squareRoot(), evidenceFloor)
 
             devices.append(DeviceFix(
                 id: id, name: name, status: radius <= p.maxRadius ? .located : .uncertain,
@@ -169,6 +172,35 @@ enum Localizer {
                 // worse kind of fix: keep the position we had, but pick up a name if one arrived since
                 out[f.id]?.name = f.name
                 out[f.id]?.named = f.named || old.named
+            }
+        }
+        return out
+    }
+
+    /// Check remembered positions against a fit of only the most recent readings.
+    ///
+    /// Remembering the best fix keeps hot spots in place when you walk away, but on its own it
+    /// can't tell "I left" from "the device moved" (people walk around) or "the early fix was
+    /// wrong". So: if the recent fit is confident and clearly disagrees with the remembered spot,
+    /// the recent one wins. If recent data is weak (you walked away), the remembered spot stays.
+    static func reconcile(_ best: [String: DeviceFix], withRecent recent: [DeviceFix]) -> [String: DeviceFix] {
+        var out = best
+        // A recent fit counts if it's a real fit (not rough), from enough spots, and not wildly vague.
+        // (Walking around a device keeps its signal similar everywhere, so these fits are often
+        // labelled "uncertain" even when the position is right.)
+        // It must also be heard clearly (typical reading above -82 dBm, i.e. you were within ~5 m):
+        // after you walk away, a few faint far-off readings must not drag a remembered spot along.
+        for r in recent where (r.status == .located || r.status == .uncertain) && r.readings >= 8
+                                && r.radius <= 4.0 && r.medianRSSI > -82 {
+            guard let b = best[r.id] else { out[r.id] = r; continue }
+            if b.status == .carried { continue }
+            if b.status.rank < r.status.rank || (b.status == r.status && b.status != .located && r.radius < b.radius) {
+                out[r.id] = r // a better recent fix beats a rough/uncertain memory
+                continue
+            }
+            let apart = hypot(r.x - b.x, r.y - b.y)
+            if apart > max(2.0, r.radius + b.radius) {
+                out[r.id] = r // clearly elsewhere now: it moved, or the remembered fix was wrong
             }
         }
         return out

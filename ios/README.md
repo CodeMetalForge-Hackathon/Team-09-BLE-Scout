@@ -89,6 +89,12 @@ unit tests use a simulated room (`BLEScoutTests/TestWorld.swift`).
   session. A later estimate only replaces it if it's about as confident or better, so
   hot spots (and the heat map, built from these remembered positions) stay put when
   you walk far away.
+- **Following devices that move:** every analysis also fits just the last 60 s. If
+  that recent fit is solid (8+ spots, ±4 m or better, heard clearly above −82 dBm) and
+  clearly disagrees with the remembered spot, the device moved (or the old fix was
+  wrong), so the recent fit takes over. Faint readings after you walk away can't move
+  it. Fits from very few spots get a minimum error radius (±2 m at 3 spots) so an early
+  guess can't lock in.
 - **Unnamed devices:** off by default. The **Include unnamed devices** switch (Scan
   screen) adds them, re-analysing the whole scan; readings are always recorded. Many
   phones only show up this way, but unnamed devices change their Bluetooth address

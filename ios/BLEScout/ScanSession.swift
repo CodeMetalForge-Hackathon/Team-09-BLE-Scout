@@ -10,6 +10,9 @@ final class ScanSession: ObservableObject {
     /// Live signal from the current mission target's devices: are we getting warmer?
     struct TargetSignal { let rssi: Int; let trend: Int } // trend: +1 warmer, -1 colder, 0 steady
 
+    /// Seconds of most recent data used to spot devices that have moved.
+    nonisolated static let recentWindow: TimeInterval = 60
+
     @Published private(set) var running = false
     @Published private(set) var poses: [Pose] = []
     @Published private(set) var current: Pose?
@@ -306,8 +309,20 @@ final class ScanSession: ObservableObject {
         let fresh = await Task.detached(priority: .userInitiated) {
             Localizer.analyze(samples: s, poses: p, params: params)
         }.value
-        // Hot spots persist: remember each device's most confident position for the whole session.
+        // Hot spots persist: remember each device's most confident position for the whole session...
         bestFixes = Localizer.mergeFixes(bestFixes, with: fresh.devices)
+        // ...but follow devices that have moved: a confident fit of just the last minute that
+        // clearly disagrees with the remembered spot replaces it.
+        if let lastT = p.last?.t {
+            let window = Self.recentWindow
+            let rp = p.filter { $0.t > lastT - window }, rs = s.filter { $0.t > lastT - window }
+            if rp.count > 1 {
+                let recent = await Task.detached(priority: .userInitiated) {
+                    Localizer.analyze(samples: rs, poses: rp, params: params)
+                }.value
+                bestFixes = Localizer.reconcile(bestFixes, withRecent: recent.devices)
+            }
+        }
         let fixes = bestFixes.values.filter { (include || $0.named) && !ignored.contains($0.id) }.sorted { $0.name < $1.name }
         let clusters = Localizer.makeClusters(fixes.filter { $0.status.isPlaced }, link: params.link)
         let r = AnalysisResult(devices: fixes, clusters: clusters,
