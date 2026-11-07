@@ -69,6 +69,12 @@ unit tests use a simulated room (`BLEScoutTests/TestWorld.swift`).
   radius. Devices that stay loud everywhere (your own earbuds or watch) are marked
   "carried by you" and excluded. Devices within 1.5 m of each other form a hot spot.
   The analysis re-runs every 2 seconds.
+- **Every heard device is placed:** a proper fit needs readings from 3 spots over
+  1 m. Devices heard less than that (slow broadcasters, far away) get a **rough**
+  position near where they were loudest, with a radius from how far that signal
+  suggests. Rough and noisy ("uncertain") devices still count toward hot spots; they
+  show as hollow dots, and the device list says how to firm them up. Only devices
+  you're carrying are excluded.
 - **Persistence:** each device's most confident position is remembered for the whole
   session. A later estimate only replaces it if it's about as confident or better, so
   hot spots (and the heat map, built from these remembered positions) stay put when

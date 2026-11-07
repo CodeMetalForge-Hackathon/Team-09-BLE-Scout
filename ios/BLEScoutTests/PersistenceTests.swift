@@ -37,7 +37,7 @@ final class PersistenceTests: XCTestCase {
             best = Localizer.mergeFixes(best, with: Localizer.analyze(samples: s, poses: p).devices)
             t += 10
         }
-        let fixes = best.values.filter { (!namedOnly || $0.named) && $0.status == .located }
+        let fixes = best.values.filter { (!namedOnly || $0.named) && $0.status.isPlaced }
         return Localizer.makeClusters(Array(fixes), link: 1.5)
     }
 
@@ -70,6 +70,28 @@ final class PersistenceTests: XCTestCase {
         XCTAssertEqual(m["d"]?.x, 1.2)        // improved
         let carried = DeviceFix(id: "d", name: "Speaker", status: .carried, readings: 60, medianRSSI: -45)
         XCTAssertEqual(Localizer.mergeFixes(m, with: [carried])["d"]?.status, .carried)
+    }
+
+    func testBrieflyHeardDeviceStillGetsRoughPosition() {
+        // walk a straight line; a slow beacon at (2, 5) is only heard twice, near the closest point
+        var poses: [Pose] = []
+        for i in 0...100 { poses.append(Pose(t: Double(i) * 0.1, x: 0, y: Double(i) * 0.1, heading: 0)) }
+        let samples = [BLESample(t: 4.6, id: "slow", name: "Slow beacon", rssi: -68),
+                       BLESample(t: 5.1, id: "slow", name: "Slow beacon", rssi: -66)]
+        let r = Localizer.analyze(samples: samples, poses: poses)
+        let d = try! XCTUnwrap(r.devices.first)
+        XCTAssertEqual(d.status, .approximate)
+        XCTAssertLessThan(hypot(d.x - 0, d.y - 5), 1.0)         // near where it was loudest
+        XCTAssertGreaterThanOrEqual(d.radius, hypot(2, 0) - 0.5) // radius covers its real distance
+        XCTAssertEqual(r.clusters.count, 1)                      // and it counts as a hot spot
+
+        // a rough fix is upgraded when a proper one arrives, but never replaces one
+        var m = Localizer.mergeFixes([:], with: [d])
+        let proper = DeviceFix(id: "slow", name: "Slow beacon", status: .located, x: 2, y: 5, radius: 0.9, readings: 9, medianRSSI: -65)
+        m = Localizer.mergeFixes(m, with: [proper])
+        XCTAssertEqual(m["slow"]?.status, .located)
+        m = Localizer.mergeFixes(m, with: [d])
+        XCTAssertEqual(m["slow"]?.x, 2)
     }
 
     func testUnnamedDevicesAreMappedWhenIncluded() {

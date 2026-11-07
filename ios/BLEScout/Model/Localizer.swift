@@ -13,11 +13,11 @@ struct LocalizerParams {
     var sigmaDB = 4.0         // expected RSSI noise per bin
     var cell = 0.3            // grid resolution, metres
     var bin = 0.5             // spatial bin for readings along your path, metres
-    var minBins = 5           // need readings from at least this many spots...
-    var minSpan = 1.5         // ...spread over at least this distance
+    var minBins = 3           // a proper fit needs readings from at least this many spots...
+    var minSpan = 1.0         // ...spread over at least this distance (otherwise: rough placement)
     var maxIndependent = 12.0 // tempers over-confidence: RSSI errors aren't independent
     var link = 1.5            // devices closer than this share a cluster
-    var maxRadius = 2.5       // less certain than this: heat map only, not clustered
+    var maxRadius = 2.5       // fits less certain than this are labelled "uncertain" (still placed)
     var margin = 4.0          // search this far beyond the area you walked
 }
 
@@ -65,14 +65,24 @@ enum Localizer {
             let ox = obs.map(\.x), oy = obs.map(\.y)
             let span = max((ox.max() ?? 0) - (ox.min() ?? 0), (oy.max() ?? 0) - (oy.min() ?? 0))
 
-            if obs.count < p.minBins || span < p.minSpan {
-                devices.append(DeviceFix(id: id, name: name, status: .tooFew, readings: obs.count, medianRSSI: med, named: isNamed))
-                continue
-            }
             let p10 = percentile(rssi, 0.1), p90 = percentile(rssi, 0.9)
             if (p10 > -58 && span > 2.5) || (p90 - p10 < 7 && med > -65 && span > 3) {
                 // Stays loud wherever you walk: it's travelling with you.
                 devices.append(DeviceFix(id: id, name: name, status: .carried, readings: obs.count, medianRSSI: med, named: isNamed))
+                continue
+            }
+            if obs.count < p.minBins || span < p.minSpan {
+                // Too little to fit a position, but we still want it on the map: place it near where
+                // it was loudest, with a radius from how far away that loudness suggests it was.
+                let top = obs.sorted { $0.r > $1.r }.prefix(3)
+                let w = top.map { pow(10, $0.r / 10) }, wsum = w.reduce(0, +)
+                let x = zip(top, w).map { $0.x * $1 }.reduce(0, +) / wsum
+                let y = zip(top, w).map { $0.y * $1 }.reduce(0, +) / wsum
+                let loudest = top.first?.r ?? -90
+                let dist = pow(10, (-59 - loudest) / (10 * p.n)) // rough distance from the loudest spot
+                devices.append(DeviceFix(id: id, name: name, status: .approximate, x: x, y: y,
+                                         radius: min(max(dist, 1.0), 8.0),
+                                         readings: obs.count, medianRSSI: med, named: isNamed))
                 continue
             }
 
@@ -119,8 +129,7 @@ enum Localizer {
                 readings: obs.count, medianRSSI: med, named: isNamed))
         }
 
-        let located = devices.filter { $0.status == .located }
-        let clusters = makeClusters(located, link: p.link)
+        let clusters = makeClusters(devices.filter { $0.status.isPlaced }, link: p.link)
         let grid = HeatGrid(x0: minX, y0: minY, cell: p.cell, nx: nx, ny: ny,
                             values: heat, maxValue: heat.max() ?? 0)
         return AnalysisResult(devices: devices.sorted { $0.name < $1.name }, clusters: clusters, heat: grid)
@@ -138,17 +147,18 @@ enum Localizer {
         var out = previous
         for f in latest {
             guard let old = previous[f.id] else { out[f.id] = f; continue }
-            switch (old.status, f.status) {
-            case (_, .carried):
-                out[f.id] = f
-            case (.located, .located), (.uncertain, .located), (.uncertain, .uncertain):
-                if f.radius <= old.radius * 1.25 || old.status != .located { out[f.id] = f }
-            case (.located, _):
-                // keep the confident position we already had, but pick up a name if one arrived since
+            if f.status == .carried || old.status == .carried {
+                out[f.id] = f                       // carried status always follows the latest evidence
+            } else if f.status.rank > old.status.rank {
+                out[f.id] = f                       // better kind of fix (e.g. rough -> proper fit)
+            } else if f.status.rank == old.status.rank {
+                // same kind: take the new one unless it's clearly less precise
+                if f.radius <= old.radius * 1.25 || f.status == .approximate { out[f.id] = f }
+                else { out[f.id]?.name = f.name; out[f.id]?.named = f.named || old.named }
+            } else {
+                // worse kind of fix: keep the position we had, but pick up a name if one arrived since
                 out[f.id]?.name = f.name
                 out[f.id]?.named = f.named || old.named
-            default:
-                out[f.id] = f
             }
         }
         return out
@@ -157,7 +167,7 @@ enum Localizer {
     /// Heat map built from remembered fixes: each device spreads one unit of "presence" as a
     /// Gaussian with its confidence radius. Unlike the live fit, this doesn't fade as you leave.
     static func heat(from fixes: [DeviceFix], poses: [Pose], cell: Double = 0.3, margin: Double = 2.0) -> HeatGrid? {
-        let used = fixes.filter { $0.status == .located || $0.status == .uncertain }
+        let used = fixes.filter { $0.status.isPlaced }
         let xs = poses.map(\.x) + used.map(\.x), ys = poses.map(\.y) + used.map(\.y)
         guard let minX0 = xs.min(), let maxX0 = xs.max(), let minY0 = ys.min(), let maxY0 = ys.max() else { return nil }
         let minX = minX0 - margin, minY = minY0 - margin
@@ -166,7 +176,7 @@ enum Localizer {
         var v = [Double](repeating: 0, count: nx * ny)
         for f in used {
             let sigma = max(f.radius, 0.5)
-            let weight = f.status == .located ? 1.0 : 0.4 // uncertain ones count, but less
+            let weight = f.status == .located ? 1.0 : 0.5 // rough/uncertain ones count, but less
             let reach = Int((3 * sigma / cell).rounded(.up))
             let ci = Int(((f.x - minX) / cell).rounded(.down)), cj = Int(((f.y - minY) / cell).rounded(.down))
             let norm = weight / (2 * .pi * sigma * sigma) * cell * cell

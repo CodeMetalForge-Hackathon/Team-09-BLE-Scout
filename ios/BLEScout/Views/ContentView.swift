@@ -191,13 +191,20 @@ struct HotSpotListView: View {
                     .foregroundStyle(.secondary)
             }
             if let devs = session.result?.devices, !devs.isEmpty {
-                Section("All named devices") {
-                    ForEach(devs) { d in
-                        HStack {
-                            Text(d.name).lineLimit(1)
-                            Spacer()
-                            Text(d.status == .located ? String(format: "±%.1f m", d.radius) : d.status.rawValue)
-                                .font(.caption).foregroundStyle(d.status == .located ? .primary : .secondary)
+                Section("All devices heard (\(devs.count))") {
+                    ForEach(devs.sorted { $0.status.rank != $1.status.rank ? $0.status.rank > $1.status.rank : $0.name < $1.name }) { d in
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack {
+                                Image(systemName: d.status == .located ? "circle.fill" : d.status.isPlaced ? "circle" : "minus.circle")
+                                    .font(.caption2).foregroundStyle(d.status == .located ? .primary : .secondary)
+                                Text(d.name).lineLimit(1)
+                                Spacer()
+                                Text(Self.badge(d)).font(.caption.monospacedDigit())
+                                    .foregroundStyle(d.status == .located ? .primary : .secondary)
+                            }
+                            if let why = Self.why(d) {
+                                Text(why).font(.caption2).foregroundStyle(.secondary)
+                            }
                         }
                     }
                 }
@@ -205,6 +212,32 @@ struct HotSpotListView: View {
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
+    }
+}
+
+extension HotSpotListView {
+    static func badge(_ d: DeviceFix) -> String {
+        switch d.status {
+        case .located: return String(format: "±%.1f m", d.radius)
+        case .uncertain, .approximate: return String(format: "rough ±%.0f m", d.radius)
+        case .carried: return "ignored"
+        case .tooFew: return "not placed"
+        }
+    }
+
+    /// Why a position is rough, and what to do about it.
+    static func why(_ d: DeviceFix) -> String? {
+        switch d.status {
+        case .located: return nil
+        case .approximate:
+            return "Heard from only \(d.readings) spot\(d.readings == 1 ? "" : "s") (it broadcasts rarely or was far away). Walk slowly near it and pause a few seconds."
+        case .uncertain:
+            return "Readings were noisy. Walk past it on two different sides."
+        case .carried:
+            return "Stayed loud wherever you walked, so it's probably on you."
+        case .tooFew:
+            return "Not enough readings."
+        }
     }
 }
 

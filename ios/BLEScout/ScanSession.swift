@@ -212,7 +212,7 @@ final class ScanSession: ObservableObject {
         // Hot spots persist: remember each device's most confident position for the whole session.
         bestFixes = Localizer.mergeFixes(bestFixes, with: fresh.devices)
         let fixes = bestFixes.values.filter { include || $0.named }.sorted { $0.name < $1.name }
-        let clusters = Localizer.makeClusters(fixes.filter { $0.status == .located }, link: params.link)
+        let clusters = Localizer.makeClusters(fixes.filter { $0.status.isPlaced }, link: params.link)
         let r = AnalysisResult(devices: fixes, clusters: clusters,
                                heat: Localizer.heat(from: fixes, poses: p) ?? fresh.heat)
         result = r

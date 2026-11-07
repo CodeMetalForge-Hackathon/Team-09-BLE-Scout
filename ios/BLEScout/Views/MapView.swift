@@ -52,9 +52,15 @@ struct MapView: View {
             }
 
             // located devices
-            for d in result?.devices ?? [] where d.status == .located {
+            // every placed device: solid = confident fit, hollow = rough or uncertain
+            for d in result?.devices ?? [] where d.status.isPlaced {
                 let p = P(d.x, d.y)
-                ctx.fill(Path(ellipseIn: CGRect(x: p.x - 2.5, y: p.y - 2.5, width: 5, height: 5)), with: .color(.white))
+                let dot = Path(ellipseIn: CGRect(x: p.x - 3, y: p.y - 3, width: 6, height: 6))
+                if d.status == .located {
+                    ctx.fill(dot, with: .color(.white))
+                } else {
+                    ctx.stroke(dot, with: .color(.white.opacity(0.6)), lineWidth: 1.2)
+                }
             }
 
             // mission targets: numbered in visiting order, current one highlighted, route to it

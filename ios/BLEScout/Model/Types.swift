@@ -20,7 +20,18 @@ struct Pose: Codable {
 }
 
 struct DeviceFix: Identifiable {
-    enum Status: String { case located, uncertain, tooFew = "too few readings", carried = "carried by you" }
+    enum Status: String {
+        case located                                  // proper fit, within ±2.5 m
+        case uncertain                                // proper fit, but noisy (> ±2.5 m)
+        case approximate = "rough"                    // heard from too few spots to fit: placed near its loudest reading
+        case tooFew = "too few readings"              // (kept for older saved data; no longer produced)
+        case carried = "carried by you"               // loud everywhere you walk: excluded
+
+        /// Devices that count toward hot spots and the heat map.
+        var isPlaced: Bool { self == .located || self == .uncertain || self == .approximate }
+        /// Higher = more trustworthy position.
+        var rank: Int { switch self { case .located: 3; case .uncertain: 2; case .approximate: 1; default: 0 } }
+    }
     let id: String
     var name: String
     let status: Status
