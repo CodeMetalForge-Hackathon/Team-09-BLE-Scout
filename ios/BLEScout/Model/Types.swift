@@ -20,14 +20,26 @@ struct Pose: Codable {
 }
 
 struct DeviceFix: Identifiable {
-    enum Status: String { case located, uncertain, tooFew = "too few readings", carried = "carried by you" }
+    enum Status: String {
+        case located                                  // proper fit, within ±2.5 m
+        case uncertain                                // proper fit, but noisy (> ±2.5 m)
+        case approximate = "rough"                    // heard from too few spots to fit: placed near its loudest reading
+        case tooFew = "too few readings"              // (kept for older saved data; no longer produced)
+        case carried = "carried by you"               // loud everywhere you walk: excluded
+
+        /// Devices that count toward hot spots and the heat map.
+        var isPlaced: Bool { self == .located || self == .uncertain || self == .approximate }
+        /// Higher = more trustworthy position.
+        var rank: Int { switch self { case .located: 3; case .uncertain: 2; case .approximate: 1; default: 0 } }
+    }
     let id: String
-    let name: String
+    var name: String
     let status: Status
     var x = 0.0, y = 0.0
     var radius = 0.0       // ~68% confidence radius, metres
     let readings: Int
     let medianRSSI: Double
+    var named = true       // broadcast a name (unnamed ones are only used when the user opts in)
 }
 
 struct Cluster: Identifiable {
@@ -36,9 +48,12 @@ struct Cluster: Identifiable {
     let y: Double
     let names: [String]
     let deviceIDs: [String]
+    var roughCount = 0      // members without a confident position
     let spread: Double      // how far members sit from the centre, metres
     let uncertainty: Double // typical position error of members, metres
     var count: Int { deviceIDs.count }
+    /// Devices with proper positions count fully, rough ones half.
+    var score: Double { Double(count - roughCount) + 0.5 * Double(roughCount) }
 }
 
 struct HeatGrid {

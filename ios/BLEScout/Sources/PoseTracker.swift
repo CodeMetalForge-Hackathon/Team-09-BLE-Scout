@@ -21,6 +21,15 @@ final class PoseTracker: NSObject, ARSessionDelegate {
 
     func pause() { session.pause() }
 
+    /// Continue after pause() without resetting: the world origin (your start point) is kept.
+    func resume() {
+        let config = ARWorldTrackingConfiguration()
+        config.worldAlignment = .gravity
+        session.delegate = self
+        lastT = 0
+        session.run(config) // no .resetTracking
+    }
+
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
         guard frame.timestamp - lastT >= 0.1 else { return } // 10 Hz is plenty
         if case .notAvailable = frame.camera.trackingState { return }
