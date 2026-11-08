@@ -118,8 +118,14 @@ function drawHeat(P, x0, x1, y0, y1, k, W, H) {
   const ny = Math.max(1, Math.ceil((y1 - y0) / cell));
   const values = new Float32Array(nx * ny);
   for (const h of spots) {
-    const sigma = Math.max(h.uncertainty || 0, (h.spread || 0.6) / 2, 0.8);
-    const weight = Math.max(0.5, (h.count || 1) - 0.5 * (h.roughCount || 0));
+    const effective = Math.max(0.5, (h.count || 1) - 0.5 * (h.roughCount || 0));
+    // Compress device counts and cap the spread, so one big/rough cluster
+    // doesn't turn the whole map into one blob. Singles still get a clear peak.
+    const weight = 1 + 0.5 * Math.log2(effective);
+    const sigma = Math.min(
+      Math.max((h.spread || 0.6) * 0.6, (h.uncertainty || 0.6) * 0.5, 0.5),
+      1.25
+    );
     const ci = Math.floor((h.x - x0) / cell), cj = Math.floor((h.y - y0) / cell);
     const reach = Math.ceil(3 * sigma / cell);
     for (let j = Math.max(0, cj - reach); j <= Math.min(ny - 1, cj + reach); j++) {
@@ -146,9 +152,10 @@ function drawHeat(P, x0, x1, y0, y1, k, W, H) {
   for (let j = 0; j < ny; j++) {
     for (let i = 0; i < nx; i++) {
       const v = values[j * nx + i] / max;
-      if (v <= 0.05) continue;
+      const intensity = Math.pow(v, 0.65); // lift weak spots so singles show
+      if (intensity <= 0.04) continue;
       const [px, py] = P(x0 + (i + 0.5) * cell, y0 + (j + 0.5) * cell);
-      hctx.fillStyle = heatColor(v);
+      hctx.fillStyle = heatColor(intensity);
       hctx.fillRect(px - cw / 2, py - cw / 2, cw, cw);
     }
   }

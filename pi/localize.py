@@ -33,6 +33,7 @@ class LocalizerParams:
     min_span_m: float = 1.0         # ...spread over at least this distance
     min_rough_bins: int = 2         # don't place a device heard in only one cell
     min_rssi: float = -90.0         # ignore weak readings for placement
+    include_unnamed: bool = False   # named-only by default, like the phone
     cell_m: float = 0.5             # grid resolution
     margin_m: float = 3.0           # search this far beyond the walked area
     max_obs: int = 80               # cap bins per device (keeps numpy fast)
@@ -150,15 +151,17 @@ class Localizer:
                 self._pose_y[i] + f * (self._pose_y[i + 1] - self._pose_y[i]))
 
     def _add_sample(self, sample: dict, position: tuple[float, float]) -> None:
-        name = str(sample.get("name") or "").strip()
-        if not name:
-            return  # unnamed devices are counted but not localised
-        rssi = float(sample.get("rssi") or -95)
-        if rssi < self.p.min_rssi:
-            return  # weak readings are uploaded but not used for placement
         device_id = str(sample.get("id") or "").strip()
         if not device_id:
             return
+        name = str(sample.get("name") or "").strip()
+        if not name:
+            if not self.p.include_unnamed:
+                return  # unnamed devices are counted but not localised
+            name = f"Unnamed · {device_id[:4]}"
+        rssi = float(sample.get("rssi") or -95)
+        if rssi < self.p.min_rssi:
+            return  # weak readings are uploaded but not used for placement
         x, y = position
         key = (math.floor(x / self.p.bin_m), math.floor(y / self.p.bin_m))
         cells = self._bins.setdefault(device_id, {})

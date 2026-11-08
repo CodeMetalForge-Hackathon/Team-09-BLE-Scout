@@ -37,7 +37,7 @@ from cloud import (
     load_env,
     post_row,
 )
-from localize import Localizer
+from localize import Localizer, LocalizerParams
 from vision import CameraPoseTracker, VisionConfig, VisionConfigError
 
 
@@ -68,9 +68,16 @@ def send_ping(cfg: Config) -> None:
     print("✓ Sent. The ground station shows it if it uses the same team code.")
 
 
-async def run(cfg: Config, vcfg: VisionConfig, args: argparse.Namespace) -> None:
+def _env_bool(value: str | None, default: bool = False) -> bool:
+    if value is None or not value.strip():
+        return default
+    return value.strip().lower() in ("1", "true", "yes", "on")
+
+
+async def run(cfg: Config, vcfg: VisionConfig, args: argparse.Namespace,
+              localizer_params: LocalizerParams) -> None:
     uploader = Uploader(cfg)
-    localizer = Localizer()
+    localizer = Localizer(localizer_params)
     print(f"Raspberry Pi uploader: '{cfg.name}' ({cfg.device_id})", flush=True)
     print(f"  team {cfg.team} · {cfg.url} · every {cfg.interval:g}s", flush=True)
     print(f"  min RSSI {cfg.min_rssi} dBm · Ctrl-C to stop", flush=True)
@@ -167,8 +174,10 @@ def main() -> None:
         send_ping(cfg)
         return
 
+    localizer_params = LocalizerParams(
+        include_unnamed=_env_bool(env.get("PI_INCLUDE_UNNAMED"), False))
     try:
-        asyncio.run(run(cfg, vcfg, args))
+        asyncio.run(run(cfg, vcfg, args, localizer_params))
     except KeyboardInterrupt:
         print("\nstopped")
 

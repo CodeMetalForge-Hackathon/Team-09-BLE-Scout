@@ -75,7 +75,8 @@ override the files.
 | `PI_NAME` | same as `PI_ID` | Label shown on the dashboard. |
 | `PI_ID` | the Pi's hostname | Stable device id (1–64 chars). Set this explicitly if you run more than one Pi. |
 | `PI_INTERVAL` | `2` | Seconds between uploads (0.2–60). |
-| `PI_MIN_RSSI` | `-95` | Ignore readings weaker than this (dBm). |
+| `PI_MIN_RSSI` | `-95` | Ignore readings weaker than this (dBm). Hot-spot placement uses -90. |
+| `PI_INCLUDE_UNNAMED` | `0` | `1` also places unnamed devices in hot spots (MAC randomization can inflate counts). |
 | `PI_CAMERA` | `1` | `1` tracks movement, `0` uploads Bluetooth only. |
 | `PI_CAMERA_FACING` | `up` | `up` for a ceiling, `down` for a floor. |
 | `PI_CAMERA_DISTANCE_M` | `2.0` | Distance from the lens to the ceiling, in metres. |
@@ -145,6 +146,16 @@ as the phone (`ios/BLEScout/Model/Localizer.swift`):
 Readings below **-90 dBm** are uploaded but ignored for placement. Placements are
 marked `located`, `uncertain` or `rough`; the dashboard draws rough ones dashed.
 No camera poses means no hot spots (`--no-camera` sends Bluetooth only).
+
+Like the phone, only **named** devices are placed by default. Set
+`PI_INCLUDE_UNNAMED=1` to include unnamed devices too: phones often hide their
+name, but their Bluetooth addresses randomize, so counts can be inflated.
+
+## Heat map
+
+The ground station's map has a **Heat map** toggle. It turns every phone/Pi hot
+spot into a small density blob; big clusters are compressed so they don't wash
+out single-device spots.
 
 ## What it sends
 
