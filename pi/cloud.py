@@ -210,7 +210,8 @@ class Uploader:
         if len(self.poses) > POSE_CAP:
             del self.poses[: len(self.poses) - POSE_CAP]
 
-    def build_batch(self, samples: Sequence[dict], poses: Sequence[dict] | None = None) -> dict:
+    def build_batch(self, samples: Sequence[dict], poses: Sequence[dict] | None = None,
+                    hot_spots: Sequence[dict] | None = None) -> dict:
         return {
             "v": 1,
             "phoneId": self.cfg.device_id,
@@ -223,7 +224,7 @@ class Uploader:
             "pose": self.latest_pose,
             "poses": list(poses or []),
             "samples": list(samples),
-            "hotSpots": [],
+            "hotSpots": list(hot_spots or []),
             "missionTarget": None,
             "stats": {"named": len(self.named), "unnamed": len(self.unnamed - self.named)},
         }

@@ -129,6 +129,20 @@ Measure the ceiling distance with a tape; it has the biggest effect on scale.
 --dry-run         print the batch JSON instead of uploading
 ```
 
+## Hot spots
+
+The Pi also estimates hot spots from its own walk, so the ground station has
+something to draw without waiting for a phone:
+
+- named-device readings are binned into 0.5 m cells along the camera path;
+- each device is placed at the RSSI-weighted centre of its 3 loudest cells;
+- devices within 1.5 m are clustered into a hot spot;
+- devices that stay loud everywhere (carried by the operator) are dropped.
+
+These placements are marked **rough**: they use the Pi's approximate camera pose
+and a simple centroid, not the phone's full grid fit. No camera poses means no
+hot spots (`--no-camera` sends Bluetooth only).
+
 ## What it sends
 
 The same schema as the phone (see the docstring in
@@ -138,10 +152,8 @@ The same schema as the phone (see the docstring in
 - raw `samples` (`t`, device address as `id`, `name`, `rssi`)
 - `pose` (latest) and `poses` (new since the last batch), in metres relative to
   where the Pi started, with heading in radians
+- `hotSpots` (rough clusters, as above)
 - `stats` (named/unnamed devices)
-
-Hot spots are left empty; the ground station can fuse them from the raw data
-later.
 
 Readings and poses that fail to upload are kept (up to 20,000 readings / 6,000
 poses) and sent with the next successful batch, so a short network drop doesn't

@@ -37,6 +37,7 @@ from cloud import (
     load_env,
     post_row,
 )
+from localize import Localizer
 from vision import CameraPoseTracker, VisionConfig, VisionConfigError
 
 
@@ -69,6 +70,7 @@ def send_ping(cfg: Config) -> None:
 
 async def run(cfg: Config, vcfg: VisionConfig, args: argparse.Namespace) -> None:
     uploader = Uploader(cfg)
+    localizer = Localizer()
     print(f"Raspberry Pi uploader: '{cfg.name}' ({cfg.device_id})", flush=True)
     print(f"  team {cfg.team} · {cfg.url} · every {cfg.interval:g}s", flush=True)
     print(f"  min RSSI {cfg.min_rssi} dBm · Ctrl-C to stop", flush=True)
@@ -115,10 +117,12 @@ async def run(cfg: Config, vcfg: VisionConfig, args: argparse.Namespace) -> None
 
                 samples = uploader.take()
                 poses = uploader.take_poses()
-                batch = uploader.build_batch(samples, poses)
+                hot_spots = localizer.analyze()
+                batch = uploader.build_batch(samples, poses, hot_spots)
 
                 if args.dry_run:
                     print(json.dumps(batch, indent=2), flush=True)
+                    localizer.add(samples, poses)
                     uploader.note_sent(len(samples), len(poses))
                     continue
 
@@ -133,10 +137,13 @@ async def run(cfg: Config, vcfg: VisionConfig, args: argparse.Namespace) -> None
                               f"({error_text(error)}); retrying…", flush=True)
                         last_error = now
                 else:
+                    # Only add to the localizer after a successful send; failed
+                    # samples stay in the uploader and must not be counted twice.
+                    localizer.add(samples, poses)
                     uploader.note_sent(len(samples), len(poses))
-                    if samples or poses:
+                    if samples or poses or hot_spots:
                         print(f"  {time.strftime('%H:%M:%S')}  sent {len(samples)} readings, "
-                              f"{len(poses)} poses "
+                              f"{len(poses)} poses, {len(hot_spots)} hot spots "
                               f"({uploader.sent_samples} readings / "
                               f"{uploader.sent_poses} poses total)", flush=True)
     finally:

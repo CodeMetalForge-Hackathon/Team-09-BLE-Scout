@@ -27,17 +27,22 @@
   button:hover { border-color:var(--bad); }
   .legend { position:absolute; left:28px; bottom:24px; font-size:12px; color:var(--muted); background:#0e1217cc; padding:6px 10px; border-radius:6px; }
   .empty { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:var(--muted); text-align:center; pointer-events:none; }
+  .check { display:flex; align-items:center; gap:8px; cursor:pointer; color:var(--text); padding:4px 0; }
+  .check input { width:16px; height:16px; accent-color:var(--accent); }
 </style>
 </head>
 <body>
 <div id="mapwrap">
   <canvas id="map"></canvas>
   <div class="empty" id="empty">Waiting for phones…<br><span class="sub">Open BLE Scout on the same Wi-Fi and tap Start.</span></div>
-  <div class="legend">lines = paths · arrows = phones now · circles = hot spots (number = devices) · dashed = heading to mission target · grid = 1 m</div>
+  <div class="legend">lines = paths · arrows = phones now · circles = hot spots (number = devices) · heat = device density · dashed = heading to mission target · grid = 1 m</div>
 </div>
 <aside>
   <h1>📡 Ground Station</h1>
   <div class="sub" id="status">connecting…</div>
+
+  <h2>Map</h2>
+  <label class="check"><input type="checkbox" id="heatToggle" checked> Heat map (device density)</label>
 
   <h2>Phones connect with</h2>
   <div id="cloudBox"><div class="sub">Team code (cloud, any network):</div><div class="url" id="team">…</div></div>
@@ -60,6 +65,9 @@
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let S = null;
+let showHeat = true;
+const heatCache = { key: null, canvas: null };
+$('heatToggle').addEventListener('change', () => { showHeat = $('heatToggle').checked; draw(); });
 
 async function resetAll() {
   if (!confirm('Clear every phone from the map and start a new session folder? Raw data already saved stays on disk.')) return;
@@ -68,6 +76,84 @@ async function resetAll() {
 
 function fromStart(x, y) {
   return `${Math.abs(x).toFixed(1)} m ${x >= 0 ? 'right' : 'left'}, ${Math.abs(y).toFixed(1)} m ${y >= 0 ? 'ahead' : 'behind'}`;
+}
+
+// ---------- heat map ----------
+// Same colour ramp as the phone (dark blue -> red -> orange -> yellow).
+const HEAT_STOPS = [
+  [0.16, 0.24, 0.55, 0.45],
+  [0.86, 0.27, 0.24, 0.70],
+  [1.00, 0.67, 0.16, 0.80],
+  [1.00, 0.94, 0.55, 0.90],
+];
+function heatColor(v) {
+  const f = Math.max(0, Math.min(1, v)) * (HEAT_STOPS.length - 1);
+  const i = Math.min(Math.floor(f), HEAT_STOPS.length - 2), u = f - i;
+  const a = HEAT_STOPS[i], b = HEAT_STOPS[i + 1];
+  const r = Math.round(255 * (a[0] + (b[0] - a[0]) * u));
+  const g = Math.round(255 * (a[1] + (b[1] - a[1]) * u));
+  const bl = Math.round(255 * (a[2] + (b[2] - a[2]) * u));
+  const al = a[3] + (b[3] - a[3]) * u;
+  return `rgba(${r},${g},${bl},${al})`;
+}
+
+// The station has hot spots, not the phone's per-device probability grid, so
+// blur the hot spots into a density field. Cached until the state or map changes.
+function drawHeat(P, x0, x1, y0, y1, k, W, H) {
+  const spots = S.phones.flatMap(p => p.hotSpots || []);
+  if (!spots.length) { heatCache.key = null; return; }
+
+  // Keep the grid bounded even if someone's path goes wild.
+  let cell = 0.3;
+  while (((x1 - x0) / cell) * ((y1 - y0) / cell) > 250_000) cell *= 2;
+
+  const key = `${W}x${H}|${cell}|${x0.toFixed(2)},${x1.toFixed(2)},${y0.toFixed(2)},${y1.toFixed(2)}|`
+    + spots.map(h => `${h.x},${h.y},${h.count},${h.roughCount},${h.spread},${h.uncertainty}`).join(';');
+  if (heatCache.key === key && heatCache.canvas) {
+    ctx.drawImage(heatCache.canvas, 0, 0, W, H);
+    return;
+  }
+
+  const nx = Math.max(1, Math.ceil((x1 - x0) / cell));
+  const ny = Math.max(1, Math.ceil((y1 - y0) / cell));
+  const values = new Float32Array(nx * ny);
+  for (const h of spots) {
+    const sigma = Math.max(h.uncertainty || 0, (h.spread || 0.6) / 2, 0.8);
+    const weight = Math.max(0.5, (h.count || 1) - 0.5 * (h.roughCount || 0));
+    const ci = Math.floor((h.x - x0) / cell), cj = Math.floor((h.y - y0) / cell);
+    const reach = Math.ceil(3 * sigma / cell);
+    for (let j = Math.max(0, cj - reach); j <= Math.min(ny - 1, cj + reach); j++) {
+      for (let i = Math.max(0, ci - reach); i <= Math.min(nx - 1, ci + reach); i++) {
+        const dx = x0 + (i + 0.5) * cell - h.x;
+        const dy = y0 + (j + 0.5) * cell - h.y;
+        values[j * nx + i] += weight * Math.exp(-(dx * dx + dy * dy) / (2 * sigma * sigma));
+      }
+    }
+  }
+  let max = 0;
+  for (const v of values) if (v > max) max = v;
+  if (max <= 0) { heatCache.key = null; return; }
+
+  let heat = heatCache.canvas;
+  if (!heat || heat.width !== W || heat.height !== H) {
+    heat = document.createElement('canvas');
+    heat.width = W; heat.height = H;
+    heatCache.canvas = heat;
+  }
+  const hctx = heat.getContext('2d');
+  hctx.clearRect(0, 0, W, H);
+  const cw = cell * k + 1;
+  for (let j = 0; j < ny; j++) {
+    for (let i = 0; i < nx; i++) {
+      const v = values[j * nx + i] / max;
+      if (v <= 0.05) continue;
+      const [px, py] = P(x0 + (i + 0.5) * cell, y0 + (j + 0.5) * cell);
+      hctx.fillStyle = heatColor(v);
+      hctx.fillRect(px - cw / 2, py - cw / 2, cw, cw);
+    }
+  }
+  heatCache.key = key;
+  ctx.drawImage(heat, 0, 0, W, H);
 }
 
 // ---------- map ----------
@@ -99,6 +185,9 @@ function draw() {
   for (let gx = Math.ceil(x0); gx <= x1; gx++) { const [a, b] = P(gx, y0), [c, d] = P(gx, y1); ctx.moveTo(a, b); ctx.lineTo(c, d); }
   for (let gy = Math.ceil(y0); gy <= y1; gy++) { const [a, b] = P(x0, gy), [c, d] = P(x1, gy); ctx.moveTo(a, b); ctx.lineTo(c, d); }
   ctx.stroke();
+
+  // heat map, behind paths and hot spots
+  if (showHeat) drawHeat(P, x0, x1, y0, y1, k, W, H);
 
   // start mark
   const [sx, sy] = P(0, 0);
