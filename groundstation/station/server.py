@@ -132,9 +132,15 @@ class Station:
         return len(shared) >= 2 or ((a["x"] - b["x"]) ** 2 + (a["y"] - b["y"]) ** 2) ** 0.5 < 2.0
 
     def is_cleared(self, spot: dict) -> dict | None:
+        """Has a rescuer tagged this? Same signal (label), same spot (< 2 m), or nearby (< 3 m) and
+        sharing a device name. One shared name elsewhere on the map doesn't count (hot-spot
+        tags can list dozens of names)."""
         for c in self.cleared:
-            if set(spot.get("names") or []) & set(c["names"]) or \
-               ((spot["x"] - c["x"]) ** 2 + (spot["y"] - c["y"]) ** 2) ** 0.5 < 2.0:
+            if c.get("x") is None or spot.get("x") is None:
+                continue
+            d = ((spot["x"] - c["x"]) ** 2 + (spot["y"] - c["y"]) ** 2) ** 0.5
+            shared = set(spot.get("names") or []) & set(c["names"])
+            if (spot.get("label") and spot["label"] == c.get("label")) or d < 2.0 or (shared and d < 3.0):
                 return c
         return None
 
@@ -176,7 +182,8 @@ class Station:
             latest[r.get("target_name", "?")] = r
         # a tagged target's relay chain is done: drop it from the map
         latest = {k: r for k, r in latest.items()
-                  if not self.is_cleared({"names": r.get("target_names") or [k], "x": r.get("target_x"), "y": r.get("target_y")})}
+                  if not self.is_cleared({"label": k, "names": r.get("target_names") or [k],
+                                          "x": r.get("target_x"), "y": r.get("target_y")})}
         return [{"target": k, "kind": r.get("kind", "relay"), "x": r.get("target_x"), "y": r.get("target_y"), "radius": r.get("target_radius"),
                  "chain": r.get("chain") or [], "hops": r.get("hop", 0), "ago": round(now - r["receivedAt"], 1)}
                 for k, r in latest.items()]

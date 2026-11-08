@@ -22,11 +22,32 @@ final class RescueCoordinationTests: XCTestCase {
         plan.update(with: [c(2, 2, ["a", "b", "c"]), c(8, 8, ["x", "y", "z"])], from: me)
         plan.upsertExternal(key: "Buds", names: ["Buds"], x: 5, y: 5, radius: 1, note: "", deviceIDs: [], lock: true, from: me)
         // someone tagged the Buds (by name) ...
-        XCTAssertTrue(plan.clearMatching(names: ["Buds"], x: 50, y: 50), "our current target was the tagged one")
+        XCTAssertTrue(plan.clearMatching(key: "Buds", names: ["Buds"], x: 50, y: 50), "our current target was the tagged one")
         XCTAssertTrue(plan.externals.isEmpty)
         // ... and someone tagged the hot spot at (8, 8) (by place)
-        plan.clearMatching(names: ["other"], x: 8.5, y: 8.2)
+        plan.clearMatching(key: "other", names: ["other"], x: 8.5, y: 8.2)
         XCTAssertEqual(plan.remaining.map(\.deviceIDs), [["a", "b", "c"]])
+    }
+
+    /// The bug from the morning test: a hot-spot tag listing 35 names (including the relayed
+    /// MacBook) far from the MacBook must not silence or clear the MacBook rescue signal.
+    func testBroadHotSpotTagDoesNotSilenceADifferentRescueSignal() {
+        var plan = MissionPlanner()
+        plan.upsertExternal(key: "Evana's MacBook Pro", names: ["Evana's MacBook Pro"], x: 6, y: 6, radius: 1,
+                            note: "", deviceIDs: [], lock: true, from: me)
+        let bigTag = Set((1...34).map { "dev\($0)" } + ["Evana's MacBook Pro"])
+        XCTAssertFalse(plan.clearMatching(key: "dev1 · dev2 · dev3", names: bigTag, x: -1.3, y: -0.9))
+        XCTAssertEqual(plan.current?.names, ["Evana's MacBook Pro"], "still navigating to the MacBook")
+        // ...but a tag of the MacBook itself does clear it
+        XCTAssertTrue(plan.clearMatching(key: "Evana's MacBook Pro", names: ["Evana's MacBook Pro"], x: 6, y: 6))
+
+        func row(_ kind: String, _ name: String, _ names: [String], _ x: Double, _ y: Double) -> RelayMessage {
+            RelayMessage(id: 1, team: "T", from_phone: "p", from_name: "P", target_name: name, target_x: x, target_y: y,
+                         target_radius: nil, hop: 0, chain: [], kind: kind, to_phone: nil, target_names: names)
+        }
+        let relay = row("relay", "Evana's MacBook Pro", ["Evana's MacBook Pro"], 6, 6)
+        XCTAssertFalse(RelayCenter.tag(row("cleared", "dev1 · dev2 · dev3", Array(bigTag), -1.3, -0.9), covers: relay))
+        XCTAssertTrue(RelayCenter.tag(row("cleared", "dev1 · dev2", Array(bigTag), 6.5, 5.5), covers: relay), "same place")
     }
 
     func testBigHotSpotIsHeldWhenAnalysisDropsIt() {

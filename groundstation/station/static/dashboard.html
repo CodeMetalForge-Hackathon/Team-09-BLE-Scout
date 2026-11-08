@@ -539,8 +539,12 @@ function samePlace(a, b) {
   const shared = (a.names || []).filter(n => (b.names || []).includes(n)).length;
   return shared >= 2 || Math.hypot(a.x - b.x, a.y - b.y) < 2;
 }
+// tagged by a rescuer: same spot (< 2 m), or nearby (< 3 m) sharing a device name
 function clearedFor(spot) {
-  return (S.cleared || []).find(c => (spot.names || []).some(n => c.names.includes(n)) || Math.hypot(spot.x - c.x, spot.y - c.y) < 2);
+  return (S.cleared || []).find(c => {
+    const d = Math.hypot(spot.x - c.x, spot.y - c.y);
+    return d < 2 || (d < 3 && (spot.names || []).some(n => c.names.includes(n)));
+  });
 }
 
 // The ground station only treats a place as a hot spot with at least this many signals

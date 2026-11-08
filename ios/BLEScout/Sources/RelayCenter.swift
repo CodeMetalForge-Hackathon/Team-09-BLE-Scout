@@ -49,8 +49,19 @@ final class RelayCenter: ObservableObject {
     var onRelay: ((RelayMessage) -> Void)?
     /// Called when another rescuer tags (clears) a target.
     var onCleared: ((RelayMessage) -> Void)?
-    /// Targets already tagged by someone: later relays of them are ignored.
-    private(set) var clearedNames = Set<String>()
+    /// Tags (cleared targets) seen so far: relays they cover are ignored.
+    private(set) var clearedTags: [RelayMessage] = []
+
+    /// Does tag `c` cover relay/target `r`? Only the same signal, or the same place (within 3 m)
+    /// sharing a device name. (A hot-spot tag can list dozens of names; one shared name somewhere
+    /// else on the map must not silence a different rescue signal.)
+    nonisolated static func tag(_ c: RelayMessage, covers r: RelayMessage) -> Bool {
+        if c.target_name == r.target_name { return true }
+        let near = hypot(c.target_x - r.target_x, c.target_y - r.target_y) < 3
+        return near && !Set(c.names).isDisjoint(with: Set(r.names))
+    }
+
+    func isCleared(_ r: RelayMessage) -> Bool { clearedTags.contains { Self.tag($0, covers: r) } }
 
     private let link: GroundLink
     private var lastID = 0
@@ -120,9 +131,8 @@ final class RelayCenter: ObservableObject {
             if let maxID = raw.compactMap({ ($0 as? [String: Any])?["id"] as? Int }).max() { lastID = max(lastID, maxID) }
             for r in rows {
                 if r.isCleared {
-                    let names = Set(r.names)
-                    clearedNames.formUnion(names)
-                    incoming.removeAll { !names.isDisjoint(with: Set($0.names)) }
+                    clearedTags.append(r)
+                    incoming.removeAll { Self.tag(r, covers: $0) }
                     if r.from_phone != link.phoneID { onCleared?(r) }
                     continue
                 }
@@ -130,7 +140,7 @@ final class RelayCenter: ObservableObject {
                     if r.to_phone == link.phoneID { onDispatch?(r) } // only the chosen rescuer reacts
                     continue
                 }
-                guard r.from_phone != link.phoneID, clearedNames.isDisjoint(with: Set(r.names)) else { continue }
+                guard r.from_phone != link.phoneID, !isCleared(r) else { continue }
                 incoming.removeAll { $0.target_name == r.target_name } // keep the newest per signal
                 incoming.insert(r, at: 0)
                 onRelay?(r)
@@ -143,7 +153,6 @@ final class RelayCenter: ObservableObject {
     /// Tell the fleet (and ground station) we tagged a target: everyone else drops it.
     func sendCleared(key: String, names: [String], x: Double, y: Double, me: Pose?) async -> Bool {
         guard available, let url = URL(string: CloudConfig.supabaseURL + "/rest/v1/relays") else { return false }
-        clearedNames.formUnion(names)
         let row: [String: Any] = ["team": link.teamCode.trimmingCharacters(in: .whitespaces).uppercased(),
                                   "from_phone": link.phoneID, "from_name": link.displayName,
                                   "kind": "cleared", "target_name": String(key.prefix(80)), "target_names": names,

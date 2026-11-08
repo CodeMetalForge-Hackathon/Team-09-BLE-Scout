@@ -201,17 +201,27 @@ struct MissionPlanner {
     var externals: [MissionTarget] { targets.filter { $0.external && $0.status != .cleared } }
     var relayTarget: MissionTarget? { externals.first }
 
-    /// Another rescuer tagged (cleared) a target: mark ours cleared too if it's the same one —
-    /// same device names, or the same spot (within 2 m). Returns true if our current target went.
+    /// Another rescuer tagged (cleared) a target: mark ours cleared too if it's the same one.
+    /// - a relayed signal: the same signal (key), or the same place (within 3 m) sharing a name
+    /// - a hot spot: the same spot (within 2 m), or sharing at least half its devices nearby
+    /// One shared name elsewhere on the map is not enough (hot-spot tags can list dozens).
+    /// Returns true if our current target went.
     @discardableResult
-    mutating func clearMatching(names: Set<String>, x: Double, y: Double) -> Bool {
+    mutating func clearMatching(key: String, names: Set<String>, x: Double, y: Double) -> Bool {
         let wasCurrent = current?.id
         var hitCurrent = false
         for i in targets.indices where targets[i].status != .cleared {
             let t = targets[i]
-            let sameDevices = !names.isDisjoint(with: Set(t.matchNames))
-            let sameSpot = hypot(t.goalX - x, t.goalY - y) < 2.0
-            if sameDevices || sameSpot {
+            let dist = hypot(t.goalX - x, t.goalY - y)
+            let mine = Set(t.matchNames)
+            let shared = mine.intersection(names).count
+            let match: Bool
+            if t.external {
+                match = t.externalKey == key || (dist < 3 && shared > 0)
+            } else {
+                match = dist < 2 || (dist < 4 && shared > 0 && Double(shared) >= 0.5 * Double(min(mine.count, names.count)))
+            }
+            if match {
                 targets[i].status = .cleared
                 if t.id == wasCurrent { hitCurrent = true }
                 if t.id == lockedID { lockedID = nil }

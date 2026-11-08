@@ -237,8 +237,8 @@ final class ScanSession: ObservableObject {
 
     /// Another rescuer tagged a target: drop it here too.
     func receiveCleared(_ r: RelayMessage) {
-        let hitCurrent = mission.clearMatching(names: Set(r.names), x: r.target_x, y: r.target_y)
-        relays.dismissed.formUnion(relays.incoming.filter { !Set($0.names).isDisjoint(with: Set(r.names)) }.map(\.id))
+        let hitCurrent = mission.clearMatching(key: r.target_name, names: Set(r.names), x: r.target_x, y: r.target_y)
+        relays.dismissed.formUnion(relays.incoming.filter { RelayCenter.tag(r, covers: $0) }.map(\.id))
         relayStatus = "✅ \(r.target_name) was tagged by \(r.from_name ?? "another rescuer")"
         if hitCurrent {
             afterTargetChange()

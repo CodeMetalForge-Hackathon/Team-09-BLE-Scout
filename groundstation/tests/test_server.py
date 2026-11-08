@@ -97,3 +97,15 @@ def test_big_hot_spots_are_held_and_tagged_targets_marked(tmp_path):
         assert st["relays"] == [], "a tagged target's relay chain is dropped"
         await c.close()
     run(go())
+
+
+def test_broad_tag_elsewhere_does_not_hide_a_relay(tmp_path):
+    async def go():
+        station, c = await client_for(tmp_path)
+        station.add_relay({"kind": "relay", "target_name": "MacBook", "target_x": 6, "target_y": 6, "chain": [], "hop": 0})
+        station.add_relay({"kind": "cleared", "target_name": "big spot", "target_names": [f"d{i}" for i in range(34)] + ["MacBook"],
+                           "target_x": -1.3, "target_y": -0.9, "from_name": "Dave", "chain": [], "hop": 0})
+        st = await (await c.get("/api/state")).json()
+        assert [r["target"] for r in st["relays"]] == ["MacBook"], "a far-away hot-spot tag must not hide it"
+        await c.close()
+    run(go())
