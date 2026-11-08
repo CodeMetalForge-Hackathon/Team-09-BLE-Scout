@@ -34,6 +34,7 @@
 		BF0CE5E6217CC0777C863689 /* GroundBatchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F85092D6E3E3AB878643C79C /* GroundBatchTests.swift */; };
 		C5BFDC18E02C3D464F6C27FF /* SpinTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F388C56CE779613B6DC2379F /* SpinTests.swift */; };
 		E012AFE14EDABFED04EEA22A /* LocalizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB9256FCCFC53D7D7123F95B /* LocalizerTests.swift */; };
+		E07009E667DD5462B3F3AA26 /* RescueCoordinationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD65130C13882FA52652D12B /* RescueCoordinationTests.swift */; };
 		E92D03A5DC8643E2CF5AECC6 /* SignalWindowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3ED141397D8CAEE12A59751 /* SignalWindowTests.swift */; };
 		F6CCF199B889F91A4C0141FF /* RelayCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = F61E5E58277EF18DBE1B8EEC /* RelayCenter.swift */; };
 /* End PBXBuildFile section */
@@ -65,6 +66,7 @@
 		915D4098C6C790AD2B05D1C9 /* PoseTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PoseTracker.swift; sourceTree = "<group>"; };
 		92A42EC91C2E67CA2A184A74 /* BLEScout.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = BLEScout.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A3ED141397D8CAEE12A59751 /* SignalWindowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignalWindowTests.swift; sourceTree = "<group>"; };
+		AD65130C13882FA52652D12B /* RescueCoordinationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RescueCoordinationTests.swift; sourceTree = "<group>"; };
 		B12F6A9B406EE846F9B89251 /* BLEScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BLEScanner.swift; sourceTree = "<group>"; };
 		B75E6A40D9CA35AE8B8D7B15 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		B78C69AC81CAE192A1BC53E9 /* CloudConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudConfig.swift; sourceTree = "<group>"; };
@@ -161,6 +163,7 @@
 				44BB7FE75E56EBF29A2F2BB7 /* MissionTests.swift */,
 				BB1697EC14865A197188D5E6 /* PersistenceTests.swift */,
 				EF21AAE26FEF37F425BA51BF /* RelayTests.swift */,
+				AD65130C13882FA52652D12B /* RescueCoordinationTests.swift */,
 				5F9D9C22D18E99AC8F7E88A6 /* SensitivityTests.swift */,
 				A3ED141397D8CAEE12A59751 /* SignalWindowTests.swift */,
 				F388C56CE779613B6DC2379F /* SpinTests.swift */,
@@ -294,6 +297,7 @@
 				132E27DF4A209649BB2C21FA /* MissionTests.swift in Sources */,
 				913AF6476FF03CF54ED11581 /* PersistenceTests.swift in Sources */,
 				1532ACABC01E38BE2C0F1B82 /* RelayTests.swift in Sources */,
+				E07009E667DD5462B3F3AA26 /* RescueCoordinationTests.swift in Sources */,
 				2E1C7150FAEA2361A40B99EC /* SensitivityTests.swift in Sources */,
 				E92D03A5DC8643E2CF5AECC6 /* SignalWindowTests.swift in Sources */,
 				C5BFDC18E02C3D464F6C27FF /* SpinTests.swift in Sources */,
@@ -348,7 +352,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 15;
+				CURRENT_PROJECT_VERSION = 17;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = P2Y69G87UF;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -408,7 +412,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 15;
+				CURRENT_PROJECT_VERSION = 17;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = P2Y69G87UF;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;

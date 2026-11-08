@@ -76,6 +76,8 @@ class Station:
         self.team = ""          # set when pulling from the Supabase relay
         self.relays: list[dict] = []  # signal relays (phone -> phone -> ... -> rescuer), oldest first
         self.dispatches: dict[str, dict] = {}  # rescuer phone id -> target the ground station sent it to
+        self.cleared: list[dict] = []          # targets tagged by a rescuer: {names, x, y, by, at}
+        self.held_spots: list[dict] = []       # big hot spots (7+ signals) kept on the map once seen
 
     def ingest(self, batch: dict) -> Phone:
         pid = str(batch.get("phoneId") or "").strip()
@@ -105,6 +107,7 @@ class Station:
             phone.path = phone.path[-MAX_PATH:]
         if "hotSpots" in batch:
             phone.hot_spots = batch.get("hotSpots") or []
+            self.hold_big_spots(phone)
         phone.mission_target = batch.get("missionTarget")
         phone.stats = batch.get("stats") or {}
         phone.samples_received += len(batch.get("samples") or [])
@@ -119,8 +122,53 @@ class Station:
         with open(self.session_dir / f"{safe}.jsonl", "a") as f:
             f.write(json.dumps({"receivedAt": received, **batch}, separators=(",", ":")) + "\n")
 
+    # ---- big hot spots stay on the map; tagged targets are marked rescued -------------------
+
+    HELD_MIN = 7  # "more than 6 signals"
+
+    @staticmethod
+    def _same_place(a: dict, b: dict) -> bool:
+        shared = set(a.get("names") or []) & set(b.get("names") or [])
+        return len(shared) >= 2 or ((a["x"] - b["x"]) ** 2 + (a["y"] - b["y"]) ** 2) ** 0.5 < 2.0
+
+    def is_cleared(self, spot: dict) -> dict | None:
+        """Has a rescuer tagged this? Same signal (label), same spot (< 2 m), or nearby (< 3 m) and
+        sharing a device name. One shared name elsewhere on the map doesn't count (hot-spot
+        tags can list dozens of names)."""
+        for c in self.cleared:
+            if c.get("x") is None or spot.get("x") is None:
+                continue
+            d = ((spot["x"] - c["x"]) ** 2 + (spot["y"] - c["y"]) ** 2) ** 0.5
+            shared = set(spot.get("names") or []) & set(c["names"])
+            if (spot.get("label") and spot["label"] == c.get("label")) or d < 2.0 or (shared and d < 3.0):
+                return c
+        return None
+
+    def hold_big_spots(self, phone: "Phone") -> None:
+        for h in phone.hot_spots:
+            if (h.get("count") or 0) < self.HELD_MIN:
+                continue
+            match = next((s for s in self.held_spots if self._same_place(s, h)), None)
+            if match is None:
+                self.held_spots.append({"x": h["x"], "y": h["y"], "count": h["count"], "names": list(h.get("names") or []),
+                                        "spread": h.get("spread", 1.0), "uncertainty": h.get("uncertainty", 1.0),
+                                        "seenBy": [phone.name], "color": phone.color})
+            else:  # latest position, everything ever seen there
+                match.update(x=h["x"], y=h["y"], count=max(match["count"], h["count"]),
+                             names=sorted(set(match["names"]) | set(h.get("names") or [])),
+                             spread=max(match["spread"], h.get("spread", 1.0)))
+                if phone.name not in match["seenBy"]:
+                    match["seenBy"].append(phone.name)
+
     def add_relay(self, row: dict) -> None:
         row = {**row, "receivedAt": time.time()}
+        if row.get("kind") == "cleared":
+            names = list(row.get("target_names") or [row.get("target_name")])
+            self.cleared.append({"names": names, "label": row.get("target_name"), "x": row.get("target_x"),
+                                 "y": row.get("target_y"), "by": row.get("from_name") or "a rescuer",
+                                 "at": row["receivedAt"]})
+            print(f"  {time.strftime('%H:%M:%S')}  tagged: '{row.get('target_name')}' cleared by "
+                  f"{row.get('from_name')}", flush=True)
         self.relays.append(row)
         self.relays = self.relays[-200:]
         self.record("_relays", row, row["receivedAt"])
@@ -129,9 +177,13 @@ class Station:
         """Newest relay per signal: its full chain of hops, for drawing."""
         latest: dict[str, dict] = {}
         for r in self.relays:
-            if r.get("kind") == "dispatch":
+            if r.get("kind") in ("dispatch", "cleared"):
                 continue
             latest[r.get("target_name", "?")] = r
+        # a tagged target's relay chain is done: drop it from the map
+        latest = {k: r for k, r in latest.items()
+                  if not self.is_cleared({"label": k, "names": r.get("target_names") or [k],
+                                          "x": r.get("target_x"), "y": r.get("target_y")})}
         return [{"target": k, "kind": r.get("kind", "relay"), "x": r.get("target_x"), "y": r.get("target_y"), "radius": r.get("target_radius"),
                  "chain": r.get("chain") or [], "hops": r.get("hop", 0), "ago": round(now - r["receivedAt"], 1)}
                 for k, r in latest.items()]
@@ -140,7 +192,9 @@ class Station:
         now = time.time()
         return {
             "relays": [r for r in self.relay_chains(now) if r.get("kind", "relay") != "dispatch"],
-            "dispatches": [{**d, "ago": round(now - d["at"])} for d in self.dispatches.values()],
+            "dispatches": [{**d, "ago": round(now - d["at"])} for d in self.dispatches.values() if not self.is_cleared(d)],
+            "cleared": [{**c, "ago": round(now - c["at"])} for c in self.cleared],
+            "heldSpots": [{**h, "rescued": bool(self.is_cleared(h))} for h in self.held_spots],
             "cloud": bool(self.team),
             "url": self.url,
             "team": self.team,
@@ -153,6 +207,8 @@ class Station:
         self.phones = {}
         self.relays = []
         self.dispatches = {}
+        self.cleared = []
+        self.held_spots = []
         self.session_dir = self.data_dir / time.strftime("session-%Y%m%d-%H%M%S")
 
 

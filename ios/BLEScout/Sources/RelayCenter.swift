@@ -26,6 +26,8 @@ struct RelayMessage: Codable, Identifiable, Equatable {
     var target_names: [String]? = nil
 
     var isDispatch: Bool { kind == "dispatch" }
+    /// A rescuer tagged (cleared) this target: everyone else drops it.
+    var isCleared: Bool { kind == "cleared" }
     /// All device names at the target (a dispatched hot spot can hold several).
     var names: [String] { target_names?.isEmpty == false ? target_names! : [target_name] }
 
@@ -43,6 +45,23 @@ final class RelayCenter: ObservableObject {
     @Published var dismissed = Set<Int>()
     /// Called when the ground station dispatches *this* phone as the rescuer.
     var onDispatch: ((RelayMessage) -> Void)?
+    /// Called for each new rescue signal relayed by another phone.
+    var onRelay: ((RelayMessage) -> Void)?
+    /// Called when another rescuer tags (clears) a target.
+    var onCleared: ((RelayMessage) -> Void)?
+    /// Tags (cleared targets) seen so far: relays they cover are ignored.
+    private(set) var clearedTags: [RelayMessage] = []
+
+    /// Does tag `c` cover relay/target `r`? Only the same signal, or the same place (within 3 m)
+    /// sharing a device name. (A hot-spot tag can list dozens of names; one shared name somewhere
+    /// else on the map must not silence a different rescue signal.)
+    nonisolated static func tag(_ c: RelayMessage, covers r: RelayMessage) -> Bool {
+        if c.target_name == r.target_name { return true }
+        let near = hypot(c.target_x - r.target_x, c.target_y - r.target_y) < 3
+        return near && !Set(c.names).isDisjoint(with: Set(r.names))
+    }
+
+    func isCleared(_ r: RelayMessage) -> Bool { clearedTags.contains { Self.tag($0, covers: r) } }
 
     private let link: GroundLink
     private var lastID = 0
@@ -102,22 +121,57 @@ final class RelayCenter: ObservableObject {
                 lastError = "relay inbox: server said \((resp as? HTTPURLResponse)?.statusCode ?? 0)"
                 return
             }
-            let rows = try JSONDecoder().decode([RelayMessage].self, from: data)
+            // Decode row by row: one odd row must not block every relay after it.
+            let raw = (try JSONSerialization.jsonObject(with: data) as? [Any]) ?? []
+            let rows = raw.compactMap { item -> RelayMessage? in
+                guard let d = try? JSONSerialization.data(withJSONObject: item) else { return nil }
+                return try? JSONDecoder().decode(RelayMessage.self, from: d)
+            }
             lastError = nil
-            guard !rows.isEmpty else { return }
-            lastID = rows.map(\.id).max() ?? lastID
+            if let maxID = raw.compactMap({ ($0 as? [String: Any])?["id"] as? Int }).max() { lastID = max(lastID, maxID) }
             for r in rows {
+                if r.isCleared {
+                    clearedTags.append(r)
+                    incoming.removeAll { Self.tag(r, covers: $0) }
+                    if r.from_phone != link.phoneID { onCleared?(r) }
+                    continue
+                }
                 if r.isDispatch {
                     if r.to_phone == link.phoneID { onDispatch?(r) } // only the chosen rescuer reacts
                     continue
                 }
-                guard r.from_phone != link.phoneID else { continue }
+                guard r.from_phone != link.phoneID, !isCleared(r) else { continue }
                 incoming.removeAll { $0.target_name == r.target_name } // keep the newest per signal
                 incoming.insert(r, at: 0)
+                onRelay?(r)
             }
         } catch {
             lastError = "relay inbox: \(error.localizedDescription)"
         }
+    }
+
+    /// Tell the fleet (and ground station) we tagged a target: everyone else drops it.
+    func sendCleared(key: String, names: [String], x: Double, y: Double, me: Pose?) async -> Bool {
+        guard available, let url = URL(string: CloudConfig.supabaseURL + "/rest/v1/relays") else { return false }
+        let row: [String: Any] = ["team": link.teamCode.trimmingCharacters(in: .whitespaces).uppercased(),
+                                  "from_phone": link.phoneID, "from_name": link.displayName,
+                                  "kind": "cleared", "target_name": String(key.prefix(80)), "target_names": names,
+                                  "target_x": x, "target_y": y, "hop": 0,
+                                  "chain": [["phone_id": link.phoneID, "name": link.displayName,
+                                             "x": me?.x ?? 0, "y": me?.y ?? 0]]]
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.timeoutInterval = 6
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("return=minimal", forHTTPHeaderField: "Prefer")
+        headers(&req)
+        req.httpBody = try? JSONSerialization.data(withJSONObject: row)
+        guard let (_, resp) = try? await URLSession.shared.data(for: req),
+              (200..<300).contains((resp as? HTTPURLResponse)?.statusCode ?? 0) else {
+            lastError = "couldn't tell the fleet this target is cleared"
+            return false
+        }
+        return true
     }
 
     /// Relay a signal's position to the fleet. `chain` = hops so far (empty when you picked it).

@@ -18,6 +18,7 @@ struct LocalizerParams {
     var maxIndependent = 12.0 // tempers over-confidence: RSSI errors aren't independent
     var link = 1.5            // devices closer than this share a cluster
     var minHotSpotDevices = 3 // a cluster only counts as a hot spot with at least this many devices
+    var minHeldDevices = 7    // hot spots with more than 6 devices are held on the map once seen
     var maxRadius = 2.5       // fits less certain than this are labelled "uncertain" (still placed)
     var margin = 4.0          // search this far beyond the area you walked
     var warmupMeters = 3.0    // no rough placements until you've walked this far (so "carried" can be judged)
@@ -231,6 +232,38 @@ enum Localizer {
             }
         }
         return HeatGrid(x0: minX, y0: minY, cell: cell, nx: nx, ny: ny, values: v, maxValue: v.max() ?? 0)
+    }
+
+    /// Big hot spots (more than `minHeld - 1` devices) are held for the rest of the scan: if a
+    /// later analysis shrinks or loses one (people moving, devices dropping out), it stays on the
+    /// map at its last good position. `held` is the running memory (updated in place).
+    /// Returns the current clusters plus any held ones they no longer cover.
+    static func holdBigSpots(_ current: [Cluster], held: inout [Cluster], minHeld: Int) -> [Cluster] {
+        func same(_ a: Cluster, _ b: Cluster) -> Bool {
+            let shared = Set(a.deviceIDs).intersection(b.deviceIDs).count
+            return shared >= max(2, min(a.count, b.count) / 3) || hypot(a.x - b.x, a.y - b.y) < 1.5
+        }
+        for c in current where c.count >= minHeld {
+            if let i = held.firstIndex(where: { same($0, c) }) {
+                // keep everything we've ever seen there, at the latest position
+                let ids = Array(Set(held[i].deviceIDs).union(c.deviceIDs)).sorted()
+                let names = Array(Set(held[i].names).union(c.names)).sorted()
+                held[i] = Cluster(id: c.id, x: c.x, y: c.y, names: names, deviceIDs: ids,
+                                  roughCount: min(c.roughCount, held[i].roughCount),
+                                  spread: max(c.spread, held[i].spread), uncertainty: c.uncertainty)
+            } else {
+                held.append(c)
+            }
+        }
+        // Where a held spot overlaps a current (smaller) cluster, show the held one there at the
+        // current position: a big hot spot never shrinks back as people move.
+        let shown = current.map { c -> Cluster in
+            guard let h = held.first(where: { same($0, c) }), h.count > c.count else { return c }
+            return Cluster(id: c.id, x: c.x, y: c.y, names: h.names, deviceIDs: h.deviceIDs,
+                           roughCount: h.roughCount, spread: h.spread, uncertainty: c.uncertainty)
+        }
+        let missing = held.filter { h in !current.contains { same(h, $0) } }
+        return shown + missing
     }
 
     /// Keep clusters with enough devices to count as hot spots, re-lettered A, B, C… in order.

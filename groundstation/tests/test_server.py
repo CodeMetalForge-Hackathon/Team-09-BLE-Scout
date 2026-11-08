@@ -75,3 +75,37 @@ def test_rejects_garbage(tmp_path):
         assert r.status == 400
         await c.close()
     run(go())
+
+
+def test_big_hot_spots_are_held_and_tagged_targets_marked(tmp_path):
+    async def go():
+        station, c = await client_for(tmp_path)
+        big = {"id": "A", "x": 4, "y": 4, "count": 8, "roughCount": 0, "names": [f"d{i}" for i in range(8)],
+               "spread": 1, "uncertainty": 1}
+        await c.post("/api/phone/p1/batch", json=batch(hot=[big]))
+        await c.post("/api/phone/p1/batch", json=batch(hot=[]))   # phone's latest view lost it
+        st = await (await c.get("/api/state")).json()
+        assert len(st["heldSpots"]) == 1 and not st["heldSpots"][0]["rescued"]
+        # a relay of a device in it, then a rescuer tags it
+        station.add_relay({"kind": "relay", "target_name": "d1", "target_x": 4, "target_y": 4, "chain": [], "hop": 0})
+        assert len((await (await c.get("/api/state")).json())["relays"]) == 1
+        station.add_relay({"kind": "cleared", "target_name": "d1", "target_names": ["d1", "d2"],
+                           "target_x": 4.2, "target_y": 3.9, "from_name": "Sam", "chain": [], "hop": 0})
+        st = await (await c.get("/api/state")).json()
+        assert st["cleared"][0]["by"] == "Sam"
+        assert st["heldSpots"][0]["rescued"] is True
+        assert st["relays"] == [], "a tagged target's relay chain is dropped"
+        await c.close()
+    run(go())
+
+
+def test_broad_tag_elsewhere_does_not_hide_a_relay(tmp_path):
+    async def go():
+        station, c = await client_for(tmp_path)
+        station.add_relay({"kind": "relay", "target_name": "MacBook", "target_x": 6, "target_y": 6, "chain": [], "hop": 0})
+        station.add_relay({"kind": "cleared", "target_name": "big spot", "target_names": [f"d{i}" for i in range(34)] + ["MacBook"],
+                           "target_x": -1.3, "target_y": -0.9, "from_name": "Dave", "chain": [], "hop": 0})
+        st = await (await c.get("/api/state")).json()
+        assert [r["target"] for r in st["relays"]] == ["MacBook"], "a far-away hot-spot tag must not hide it"
+        await c.close()
+    run(go())

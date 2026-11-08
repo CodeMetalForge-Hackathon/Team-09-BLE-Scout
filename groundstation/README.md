@@ -55,6 +55,13 @@ and switches to Mission mode toward the target within a couple of seconds; the d
 draws a red RESCUE line. Needs the cloud relay and the dispatch columns from
 `supabase/schema.sql`.
 
+## Held hot spots and rescues
+
+Hot spots with **7+ signals** are held on the dashboard (gold ring, "held") even when the
+phones' latest views shrink or lose them. When a rescuer tags a target (Cleared in the app),
+the dashboard shows **✓ Rescued by [name]**, lists it under **Rescued**, and removes its relay
+chain and dispatch line.
+
 ## What's stored
 
 Every batch a phone sends is appended to `sessions/session-<time>/<phone>.jsonl` (raw
