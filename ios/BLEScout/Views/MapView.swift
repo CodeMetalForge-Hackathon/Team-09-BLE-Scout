@@ -7,8 +7,50 @@ struct MapView: View {
     let result: AnalysisResult?
     var mission: MissionPlanner? = nil
 
+    // Zoom & pan: pinch to zoom, drag to pan, double-tap (or ⤢) to fit everything again.
+    @State private var zoom: CGFloat = 1
+    @State private var pan: CGSize = .zero
+    @GestureState private var pinch: CGFloat = 1
+    @GestureState private var drag: CGSize = .zero
+
+    private func clampZoom(_ z: CGFloat) -> CGFloat { min(max(z, 0.5), 20) }
+
     var body: some View {
-        Canvas { ctx, size in
+        canvas
+            .gesture(SimultaneousGesture(
+                MagnificationGesture()
+                    .updating($pinch) { v, s, _ in s = v }
+                    .onEnded { v in zoom = clampZoom(zoom * v) },
+                DragGesture(minimumDistance: 4)
+                    .updating($drag) { v, s, _ in s = v.translation }
+                    .onEnded { v in pan.width += v.translation.width; pan.height += v.translation.height }
+            ))
+            .onTapGesture(count: 2) { withAnimation(.easeOut(duration: 0.25)) { zoom = 1; pan = .zero } }
+            .overlay(alignment: .bottomTrailing) { zoomButtons }
+    }
+
+    private var zoomButtons: some View {
+        VStack(spacing: 6) {
+            Button { withAnimation(.easeOut(duration: 0.2)) { zoom = clampZoom(zoom * 1.5) } } label: { Image(systemName: "plus") }
+            Button { withAnimation(.easeOut(duration: 0.2)) { zoom = clampZoom(zoom / 1.5) } } label: { Image(systemName: "minus") }
+            Button { withAnimation(.easeOut(duration: 0.25)) { zoom = 1; pan = .zero } } label: {
+                Image(systemName: "arrow.up.left.and.down.right.magnifyingglass")
+            }
+        }
+        .font(.system(size: 15, weight: .semibold))
+        .buttonStyle(.plain)
+        .frame(width: 40)
+        .padding(.vertical, 8)
+        .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 10))
+        .foregroundStyle(.white)
+        .padding(10)
+        .padding(.bottom, 64) // clear of the "Plan mission" button
+    }
+
+    private var canvas: some View {
+        let z = clampZoom(zoom * pinch)
+        let off = CGSize(width: pan.width + drag.width, height: pan.height + drag.height)
+        return Canvas { ctx, size in
             let clusters = result?.clusters ?? []
             // Fit everything we know about (path, clusters, start) with some padding.
             let targets = mission?.targets ?? []
@@ -18,16 +60,21 @@ struct MapView: View {
             ys += [ys.min()! - 1.5, ys.max()! + 1.5]
             let minX = xs.min()!, maxX = max(xs.max()!, minX + 4)
             let minY = ys.min()!, maxY = max(ys.max()!, minY + 4)
-            let k = min(size.width / (maxX - minX), size.height / (maxY - minY))
-            let ox = (size.width - (maxX - minX) * k) / 2, oy = (size.height - (maxY - minY) * k) / 2
+            let kb = min(size.width / (maxX - minX), size.height / (maxY - minY))
+            let ox = (size.width - (maxX - minX) * kb) / 2, oy = (size.height - (maxY - minY) * kb) / 2
+            let k = kb * z  // points per metre after zoom
             func P(_ x: Double, _ y: Double) -> CGPoint {
-                CGPoint(x: ox + (x - minX) * k, y: size.height - oy - (y - minY) * k)
+                // auto-fit, then zoom about the centre and pan
+                let bx = ox + (x - minX) * kb, by = size.height - oy - (y - minY) * kb
+                return CGPoint(x: size.width / 2 + (bx - size.width / 2) * z + off.width,
+                               y: size.height / 2 + (by - size.height / 2) * z + off.height)
             }
 
-            // 1 m grid
+            // 1 m grid (extended when zoomed out or panned)
+            let gpad = (z < 1 || off != .zero) ? 30.0 : 0
             var grid = Path()
-            for gx in stride(from: floor(minX), through: maxX, by: 1) { grid.move(to: P(gx, minY)); grid.addLine(to: P(gx, maxY)) }
-            for gy in stride(from: floor(minY), through: maxY, by: 1) { grid.move(to: P(minX, gy)); grid.addLine(to: P(maxX, gy)) }
+            for gx in stride(from: floor(minX - gpad), through: maxX + gpad, by: 1) { grid.move(to: P(gx, minY - gpad)); grid.addLine(to: P(gx, maxY + gpad)) }
+            for gy in stride(from: floor(minY - gpad), through: maxY + gpad, by: 1) { grid.move(to: P(minX - gpad, gy)); grid.addLine(to: P(maxX + gpad, gy)) }
             ctx.stroke(grid, with: .color(.white.opacity(0.06)), lineWidth: 1)
 
             // heat map
@@ -74,7 +121,7 @@ struct MapView: View {
                 for t in targets {
                     let p = P(t.x, t.y), r = max(t.arrivalRadius * k, 16)
                     let isCurrent = t.id == mission.current?.id
-                    let color: Color = t.status == .cleared ? .green : isCurrent ? .orange : .red
+                    let color: Color = t.status == .cleared ? .green : t.external ? .purple : isCurrent ? .orange : .red
                     ctx.stroke(Path(ellipseIn: CGRect(x: p.x - r, y: p.y - r, width: 2 * r, height: 2 * r)),
                                with: .color(color), lineWidth: isCurrent ? 4 : 2)
                     let label = t.status == .cleared ? "✓" : "\((order.firstIndex { $0.id == t.id } ?? 0) + 1)"
@@ -116,11 +163,14 @@ struct MapView: View {
                 ctx.stroke(arrow.applying(t), with: .color(.white), lineWidth: 2)
             }
 
-            // scale bar
-            let bar = Path { $0.move(to: CGPoint(x: 12, y: size.height - 12)); $0.addLine(to: CGPoint(x: 12 + k, y: size.height - 12)) }
+            // scale bar: pick a length that's 40-160 points at the current zoom
+            let metres = [0.25, 0.5, 1, 2, 5, 10, 20, 50].first { $0 * k >= 40 } ?? 50
+            let len = metres * k
+            let bar = Path { $0.move(to: CGPoint(x: 12, y: size.height - 12)); $0.addLine(to: CGPoint(x: 12 + len, y: size.height - 12)) }
             ctx.stroke(bar, with: .color(.white.opacity(0.7)), lineWidth: 2)
-            ctx.draw(Text("1 m").font(.caption2).foregroundColor(.white.opacity(0.7)),
-                     at: CGPoint(x: 12 + k / 2, y: size.height - 22))
+            ctx.draw(Text(metres < 1 ? String(format: "%.0f cm", metres * 100) : String(format: "%g m", metres))
+                        .font(.caption2).foregroundColor(.white.opacity(0.7)),
+                     at: CGPoint(x: 12 + len / 2, y: size.height - 22))
         }
         .background(Color(white: 0.07))
     }

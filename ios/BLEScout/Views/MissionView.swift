@@ -34,7 +34,11 @@ struct MissionView: View {
 
         VStack(spacing: 10) {
             HStack {
-                Text("Hot spot \(rank) of \(plan.remaining.count)").font(.headline)
+                if t.external {
+                    Label("Relayed signal", systemImage: "dot.radiowaves.left.and.right").font(.headline).foregroundStyle(.purple)
+                } else {
+                    Text("Hot spot \(rank) of \(plan.remaining.count)").font(.headline)
+                }
                 if t.status == .skipped { Text("skipped earlier").font(.caption).foregroundStyle(.secondary) }
                 if t.allRough { Text("rough").font(.caption.bold()).foregroundStyle(.yellow) }
                 Spacer()
@@ -76,6 +80,10 @@ struct MissionView: View {
             Text(t.names.joined(separator: " · "))
                 .font(.caption).foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading).lineLimit(2)
+            if let note = t.relayNote {
+                Label(note, systemImage: "point.3.connected.trianglepath.dotted").font(.caption).foregroundStyle(.purple)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
             if let note = t.pinNote {
                 Label(note, systemImage: "scope").font(.caption).foregroundStyle(.orange)
                     .frame(maxWidth: .infinity, alignment: .leading)

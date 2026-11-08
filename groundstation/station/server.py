@@ -74,6 +74,7 @@ class Station:
         self.session_dir = data_dir / time.strftime("session-%Y%m%d-%H%M%S")
         self.url = ""
         self.team = ""          # set when pulling from the Supabase relay
+        self.relays: list[dict] = []  # signal relays (phone -> phone -> ... -> rescuer), oldest first
 
     def ingest(self, batch: dict) -> Phone:
         pid = str(batch.get("phoneId") or "").strip()
@@ -117,9 +118,25 @@ class Station:
         with open(self.session_dir / f"{safe}.jsonl", "a") as f:
             f.write(json.dumps({"receivedAt": received, **batch}, separators=(",", ":")) + "\n")
 
+    def add_relay(self, row: dict) -> None:
+        row = {**row, "receivedAt": time.time()}
+        self.relays.append(row)
+        self.relays = self.relays[-200:]
+        self.record("_relays", row, row["receivedAt"])
+
+    def relay_chains(self, now: float) -> list[dict]:
+        """Newest relay per signal: its full chain of hops, for drawing."""
+        latest: dict[str, dict] = {}
+        for r in self.relays:
+            latest[r.get("target_name", "?")] = r
+        return [{"target": k, "x": r.get("target_x"), "y": r.get("target_y"), "radius": r.get("target_radius"),
+                 "chain": r.get("chain") or [], "hops": r.get("hop", 0), "ago": round(now - r["receivedAt"], 1)}
+                for k, r in latest.items()]
+
     def state(self) -> dict:
         now = time.time()
         return {
+            "relays": self.relay_chains(now),
             "url": self.url,
             "team": self.team,
             "sessionDir": str(self.session_dir),
@@ -129,6 +146,7 @@ class Station:
 
     def reset(self) -> None:
         self.phones = {}
+        self.relays = []
         self.session_dir = self.data_dir / time.strftime("session-%Y%m%d-%H%M%S")
 
 

@@ -10,12 +10,14 @@
 		074DA7000B089DA06EEB7B43 /* Localizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 173780A1A7F54488D979749C /* Localizer.swift */; };
 		0CDAB68E0883C2567188E690 /* BLEScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = B12F6A9B406EE846F9B89251 /* BLEScanner.swift */; };
 		132E27DF4A209649BB2C21FA /* MissionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44BB7FE75E56EBF29A2F2BB7 /* MissionTests.swift */; };
+		1532ACABC01E38BE2C0F1B82 /* RelayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF21AAE26FEF37F425BA51BF /* RelayTests.swift */; };
 		171B25FA7A40EB4E60E3A382 /* PoseTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 915D4098C6C790AD2B05D1C9 /* PoseTracker.swift */; };
 		283D55D647FCB64F6D29DCE8 /* BLEScoutApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C549A2854382C8BCF016755E /* BLEScoutApp.swift */; };
 		2E1C7150FAEA2361A40B99EC /* SensitivityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F9D9C22D18E99AC8F7E88A6 /* SensitivityTests.swift */; };
 		45C0F6ACB625B4E03B51F7D2 /* MapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 631602BC3067CB5AFC19699A /* MapView.swift */; };
 		4AC0246CA5C0D82C2F647882 /* MissionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06FC9D17274C4DC16D4AAB96 /* MissionView.swift */; };
 		4DF26ADFB6126818307956D9 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = FFF58058408DE89591155A52 /* Assets.xcassets */; };
+		5B4B6F26696334F162376532 /* RelayViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBCEC552881156D9EB2D662B /* RelayViews.swift */; };
 		6E4F43C1202DBF149E6FC3E7 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13E3BC089679323857863E2D /* ContentView.swift */; };
 		913AF6476FF03CF54ED11581 /* PersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1697EC14865A197188D5E6 /* PersistenceTests.swift */; };
 		93E6B92AA98986C1245BFD45 /* ScanSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = E087611224732C402C1513F1 /* ScanSession.swift */; };
@@ -30,6 +32,7 @@
 		BF0CE5E6217CC0777C863689 /* GroundBatchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F85092D6E3E3AB878643C79C /* GroundBatchTests.swift */; };
 		C5BFDC18E02C3D464F6C27FF /* SpinTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F388C56CE779613B6DC2379F /* SpinTests.swift */; };
 		E012AFE14EDABFED04EEA22A /* LocalizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB9256FCCFC53D7D7123F95B /* LocalizerTests.swift */; };
+		F6CCF199B889F91A4C0141FF /* RelayCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = F61E5E58277EF18DBE1B8EEC /* RelayCenter.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -66,7 +69,10 @@
 		DB9256FCCFC53D7D7123F95B /* LocalizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizerTests.swift; sourceTree = "<group>"; };
 		E087611224732C402C1513F1 /* ScanSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanSession.swift; sourceTree = "<group>"; };
 		E0E46204829F9DBFE449902B /* Mission.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mission.swift; sourceTree = "<group>"; };
+		EBCEC552881156D9EB2D662B /* RelayViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayViews.swift; sourceTree = "<group>"; };
+		EF21AAE26FEF37F425BA51BF /* RelayTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayTests.swift; sourceTree = "<group>"; };
 		F388C56CE779613B6DC2379F /* SpinTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpinTests.swift; sourceTree = "<group>"; };
+		F61E5E58277EF18DBE1B8EEC /* RelayCenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayCenter.swift; sourceTree = "<group>"; };
 		F85092D6E3E3AB878643C79C /* GroundBatchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroundBatchTests.swift; sourceTree = "<group>"; };
 		FFF58058408DE89591155A52 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -79,6 +85,7 @@
 				B78C69AC81CAE192A1BC53E9 /* CloudConfig.swift */,
 				C2702569528B9777186CCBD3 /* GroundLink.swift */,
 				915D4098C6C790AD2B05D1C9 /* PoseTracker.swift */,
+				F61E5E58277EF18DBE1B8EEC /* RelayCenter.swift */,
 			);
 			path = Sources;
 			sourceTree = "<group>";
@@ -104,6 +111,7 @@
 				72BC233DDD8E07C835331719 /* GroundViews.swift */,
 				631602BC3067CB5AFC19699A /* MapView.swift */,
 				06FC9D17274C4DC16D4AAB96 /* MissionView.swift */,
+				EBCEC552881156D9EB2D662B /* RelayViews.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -144,6 +152,7 @@
 				DB9256FCCFC53D7D7123F95B /* LocalizerTests.swift */,
 				44BB7FE75E56EBF29A2F2BB7 /* MissionTests.swift */,
 				BB1697EC14865A197188D5E6 /* PersistenceTests.swift */,
+				EF21AAE26FEF37F425BA51BF /* RelayTests.swift */,
 				5F9D9C22D18E99AC8F7E88A6 /* SensitivityTests.swift */,
 				F388C56CE779613B6DC2379F /* SpinTests.swift */,
 				4A0069AD32A25BE09707F925 /* StalenessTests.swift */,
@@ -257,6 +266,8 @@
 				A4B76B951F19AD2130559859 /* Mission.swift in Sources */,
 				4AC0246CA5C0D82C2F647882 /* MissionView.swift in Sources */,
 				171B25FA7A40EB4E60E3A382 /* PoseTracker.swift in Sources */,
+				F6CCF199B889F91A4C0141FF /* RelayCenter.swift in Sources */,
+				5B4B6F26696334F162376532 /* RelayViews.swift in Sources */,
 				93E6B92AA98986C1245BFD45 /* ScanSession.swift in Sources */,
 				A08CF24FC048F83AC1D8A220 /* Spin.swift in Sources */,
 				BC73372E56D5DB44DE809661 /* Types.swift in Sources */,
@@ -271,6 +282,7 @@
 				E012AFE14EDABFED04EEA22A /* LocalizerTests.swift in Sources */,
 				132E27DF4A209649BB2C21FA /* MissionTests.swift in Sources */,
 				913AF6476FF03CF54ED11581 /* PersistenceTests.swift in Sources */,
+				1532ACABC01E38BE2C0F1B82 /* RelayTests.swift in Sources */,
 				2E1C7150FAEA2361A40B99EC /* SensitivityTests.swift in Sources */,
 				C5BFDC18E02C3D464F6C27FF /* SpinTests.swift in Sources */,
 				9528FF32748F57BA28AD14AD /* StalenessTests.swift in Sources */,
@@ -324,7 +336,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 10;
+				CURRENT_PROJECT_VERSION = 12;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = P2Y69G87UF;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -384,7 +396,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 10;
+				CURRENT_PROJECT_VERSION = 12;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = P2Y69G87UF;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
