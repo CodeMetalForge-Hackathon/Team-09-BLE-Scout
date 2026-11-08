@@ -14,6 +14,8 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+from station.tls import ssl_context
+
 ENV = Path(__file__).with_name(".env")
 EXAMPLE = Path(__file__).with_name(".env.example")
 
@@ -49,7 +51,7 @@ def main() -> None:
             headers["Authorization"] = f"Bearer {key}"
         req = urllib.request.Request(f"{url}/rest/v1/batches?select=id&limit=1", headers=headers)
         try:
-            with urllib.request.urlopen(req, timeout=8) as r:
+            with urllib.request.urlopen(req, timeout=8, context=ssl_context()) as r:
                 json.loads(r.read() or b"[]")
             print("✓ Key works: the ground station can read from Supabase.")
         except urllib.error.HTTPError as e:

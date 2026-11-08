@@ -16,6 +16,7 @@ from pathlib import Path
 import aiohttp
 
 from .server import Station
+from .tls import ssl_context
 
 
 @dataclass
@@ -53,7 +54,8 @@ async def poll_supabase(cfg: CloudConfig, station: Station, interval: float = 1.
     last_id: int | None = None
     warned = False
     endpoint = f"{cfg.url}/rest/v1/batches"
-    async with aiohttp.ClientSession(headers=auth_headers(cfg.key)) as http:
+    connector = aiohttp.TCPConnector(ssl=ssl_context())
+    async with aiohttp.ClientSession(headers=auth_headers(cfg.key), connector=connector) as http:
         while True:
             params = {"select": "id,phone_id,name,kind,payload", "team": f"eq.{cfg.team}",
                       "order": "id.asc", "limit": "500"}
