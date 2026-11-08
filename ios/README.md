@@ -83,6 +83,12 @@ mark. Only named devices can be relayed (iOS gives each device a different ID pe
 rescuer" banner appears and Mission mode heads for the target (as soon as you press Start,
 if you weren't scanning).
 
+**Hot spots & Nearby:** a hot spot needs **3+ named devices** that have each been heard in
+**3 separate 5-second windows** (passers-by and one-off blips don't count; every reading
+still feeds positioning). **Nearby** lists the top 5 closest steady signals (median over the
+last 5 s, heard 3+ times in it); the Mission warmer/colder meter uses the same 5 s median.
+The ground station dashboard only shows hot spots with **5+** signals.
+
 **Mission locks in:** the current hot spot stays the target until you tap **Cleared · next**
 or **Skip**; its position eases toward new estimates instead of jumping. Relayed signals
 and dispatches switch immediately.

@@ -139,7 +139,7 @@ struct ScanView: View {
         VStack(alignment: .leading, spacing: 14) {
             Label("Stand at your start point, facing into the area, and tap Start.", systemImage: "1.circle.fill")
             Label("Walk slowly on any route, holding the phone upright with the back camera uncovered. It's only used for tracking; nothing is shown or saved.", systemImage: "2.circle.fill")
-            Label("Hot spots (places with several Bluetooth devices) appear on the map as you go, and stay there when you walk away.", systemImage: "3.circle.fill")
+            Label("Hot spots (places with 3 or more Bluetooth devices) appear on the map as you go, and stay there when you walk away.", systemImage: "3.circle.fill")
             Label("Switch to Mission to be guided to the hot spots with the most devices first.", systemImage: "4.circle.fill")
             Spacer()
         }
@@ -180,7 +180,7 @@ struct HotSpotListView: View {
                     .padding(.vertical, 4)
                 }
             } else {
-                Text(session.running ? "Keep walking. Hot spots appear once devices are heard from several spots."
+                Text(session.running ? "Keep walking. A hot spot appears where 3 or more devices are found close together."
                                      : "Press Start and walk around, any route.")
                     .foregroundStyle(.secondary)
             }
@@ -251,7 +251,8 @@ struct NearbyView: View {
     var body: some View {
         List {
             if session.nearby.isEmpty {
-                Text(session.running ? "No named devices heard in the last 3 seconds." : "Start a scan to see nearby devices.")
+                Text(session.running ? "No steady signals in the last 5 seconds. Keep moving; a device appears once it's heard 3+ times in 5 s."
+                                     : "Start a scan to see nearby devices.")
                     .foregroundStyle(.secondary)
             }
             ForEach(session.nearby) { d in
@@ -266,7 +267,8 @@ struct NearbyView: View {
                 .relayOnTap(deviceID: d.id, name: d.name)
             }
             if !session.nearby.isEmpty {
-                Text("Tap a device to relay its position to the fleet.").font(.caption2).foregroundStyle(.secondary)
+                Text("Top \(SignalWindow.topCount) closest steady signals (median over the last \(Int(SignalWindow.seconds)) s). Tap one to relay its position to the fleet.")
+                    .font(.caption2).foregroundStyle(.secondary)
             }
         }
         .listStyle(.plain)

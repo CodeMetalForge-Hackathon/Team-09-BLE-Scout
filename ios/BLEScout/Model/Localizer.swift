@@ -17,6 +17,7 @@ struct LocalizerParams {
     var minSpan = 1.0         // ...spread over at least this distance (otherwise: rough placement)
     var maxIndependent = 12.0 // tempers over-confidence: RSSI errors aren't independent
     var link = 1.5            // devices closer than this share a cluster
+    var minHotSpotDevices = 3 // a cluster only counts as a hot spot with at least this many devices
     var maxRadius = 2.5       // fits less certain than this are labelled "uncertain" (still placed)
     var margin = 4.0          // search this far beyond the area you walked
     var warmupMeters = 3.0    // no rough placements until you've walked this far (so "carried" can be judged)
@@ -230,6 +231,14 @@ enum Localizer {
             }
         }
         return HeatGrid(x0: minX, y0: minY, cell: cell, nx: nx, ny: ny, values: v, maxValue: v.max() ?? 0)
+    }
+
+    /// Keep clusters with enough devices to count as hot spots, re-lettered A, B, C… in order.
+    static func hotSpots(_ clusters: [Cluster], minDevices: Int) -> [Cluster] {
+        clusters.filter { $0.count >= minDevices }.enumerated().map { i, c in
+            Cluster(id: i < 26 ? String(UnicodeScalar(65 + i)!) : "Z\(i)", x: c.x, y: c.y, names: c.names,
+                    deviceIDs: c.deviceIDs, roughCount: c.roughCount, spread: c.spread, uncertainty: c.uncertainty)
+        }
     }
 
     /// Single-linkage grouping: any two devices within `link` metres end up together.
