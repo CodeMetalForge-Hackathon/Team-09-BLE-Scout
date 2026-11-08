@@ -19,7 +19,7 @@ final class RelayTests: XCTestCase {
         XCTAssertEqual(plan.relayTarget?.x, 8, "re-analysing hot spots must not drop or move it")
 
         plan.refineRelayTarget(x: 7.4, y: 3.3, radius: 0.8, deviceIDs: ["my-id-for-buds"])
-        XCTAssertEqual(plan.relayTarget?.x, 7.4)
+        XCTAssertEqual(plan.relayTarget?.x ?? 0, 7.82, accuracy: 1e-9, "eases 30% toward our own fix (no jump)")
         XCTAssertEqual(plan.relayTarget?.deviceIDs, ["my-id-for-buds"])
         XCTAssertTrue(plan.relayTarget?.relayNote?.contains("heard here") ?? false)
 
@@ -33,6 +33,18 @@ final class RelayTests: XCTestCase {
         plan.setRelayTarget(name: "A", x: 1, y: 1, radius: 1, note: "", deviceIDs: [], from: nil)
         plan.setRelayTarget(name: "B", x: 2, y: 2, radius: 1, note: "", deviceIDs: [], from: nil)
         XCTAssertEqual(plan.targets.filter(\.external).map(\.names), [["B"]])
+    }
+
+    func testDispatchRowDecodes() throws {
+        let json = """
+        [{"id":9,"team":"TEAM9","from_phone":"ground-station","from_name":"Ground station","target_name":"AirPods Pro",
+          "target_x":3,"target_y":6,"target_radius":1.5,"hop":0,"chain":[],
+          "kind":"dispatch","to_phone":"rescuer-1","target_names":["AirPods Pro","Apple Watch"],"created_at":"2026-11-08T09:24:25Z"}]
+        """.data(using: .utf8)!
+        let d = try XCTUnwrap(JSONDecoder().decode([RelayMessage].self, from: json).first)
+        XCTAssertTrue(d.isDispatch)
+        XCTAssertEqual(d.to_phone, "rescuer-1")
+        XCTAssertEqual(d.names, ["AirPods Pro", "Apple Watch"])
     }
 
     func testRelayRowDecodesFromSupabase() throws {

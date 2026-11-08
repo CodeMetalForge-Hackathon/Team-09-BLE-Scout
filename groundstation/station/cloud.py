@@ -48,6 +48,17 @@ def auth_headers(key: str) -> dict:
     return h
 
 
+async def insert_relay(cfg: CloudConfig, row: dict) -> None:
+    """Write a relay row (e.g. a dispatch) with the ground station's secret key."""
+    headers = {**auth_headers(cfg.key), "Content-Type": "application/json", "Prefer": "return=minimal"}
+    connector = aiohttp.TCPConnector(ssl=ssl_context())
+    async with aiohttp.ClientSession(connector=connector) as http:
+        async with http.post(f"{cfg.url}/rest/v1/relays", json=row, headers=headers,
+                             timeout=aiohttp.ClientTimeout(total=8)) as r:
+            if r.status >= 300:
+                raise RuntimeError(f"Supabase said {r.status}: {(await r.text())[:200]}")
+
+
 async def poll_relays(cfg: CloudConfig, station: Station, interval: float = 1.0, lookback_min: float = 15) -> None:
     """Forever: pull new signal relays for our team and hand them to the station."""
     since = (datetime.now(timezone.utc) - timedelta(minutes=lookback_min)).isoformat()
@@ -71,6 +82,8 @@ async def poll_relays(cfg: CloudConfig, station: Station, interval: float = 1.0,
                 for row in rows:
                     last_id = row["id"]
                     station.add_relay(row)
+                    if row.get("kind") == "dispatch":
+                        continue  # already logged when the dashboard sent it
                     names = " → ".join(h.get("name", "?") for h in row.get("chain") or [])
                     print(f"  {time.strftime('%H:%M:%S')}  relay: '{row.get('target_name')}' via {names}"
                           f" (hop {row.get('hop')})", flush=True)

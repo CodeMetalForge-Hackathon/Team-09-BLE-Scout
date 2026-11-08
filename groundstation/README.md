@@ -46,6 +46,15 @@ the target ★ → the phone that picked it → each phone that forwarded it, an
 
 Map: scroll or pinch to zoom at the cursor, drag to pan, double-click or **Fit** to reset.
 
+## Dispatching a rescuer
+
+In the dashboard's **Dispatch a rescuer** panel: pick a **target** (click a hot spot on the
+map, or **Target** in the Hot spots list) and a **rescuer** (click a phone on the map, or
+**Rescuer** on its card), then **🚨 Send rescuer**. That phone shows "You're the rescuer"
+and switches to Mission mode toward the target within a couple of seconds; the dashboard
+draws a red RESCUE line. Needs the cloud relay and the dispatch columns from
+`supabase/schema.sql`.
+
 ## What's stored
 
 Every batch a phone sends is appended to `sessions/session-<time>/<phone>.jsonl` (raw

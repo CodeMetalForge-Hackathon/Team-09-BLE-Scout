@@ -79,6 +79,14 @@ your own fix once your scanner hears it. Relays need **Cloud** mode and go throu
 Supabase `relays` table; phones share one map frame because everyone starts on the same
 mark. Only named devices can be relayed (iOS gives each device a different ID per phone).
 
+**Dispatch:** the ground station can pick this phone as the rescuer; a red "You're the
+rescuer" banner appears and Mission mode heads for the target (as soon as you press Start,
+if you weren't scanning).
+
+**Mission locks in:** the current hot spot stays the target until you tap **Cleared · next**
+or **Skip**; its position eases toward new estimates instead of jumping. Relayed signals
+and dispatches switch immediately.
+
 Maps: pinch to zoom, drag to pan, double-tap or ⤢ to fit.
 
 ## How it works

@@ -49,7 +49,10 @@ async def advertise(ip: str, port: int, url: str):
 
 async def serve(args) -> None:
     station = Station(args.data_dir)
-    runner = web.AppRunner(build_app(station))
+    cloud = None if args.local_only else CloudConfig.load(args.env, args.team)
+    app = build_app(station)
+    app["cloud_cfg"] = cloud
+    runner = web.AppRunner(app)
     await runner.setup()
     await web.TCPSite(runner, "0.0.0.0", args.port).start()
 
@@ -57,7 +60,6 @@ async def serve(args) -> None:
     station.url = f"http://{ip}:{args.port}"
     zc, info = await advertise(ip, args.port, station.url)
 
-    cloud = None if args.local_only else CloudConfig.load(args.env, args.team)
     cloud_task = None
     if cloud:
         station.team = cloud.team

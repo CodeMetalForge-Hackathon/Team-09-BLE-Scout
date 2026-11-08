@@ -44,6 +44,33 @@ struct RelayCard: View {
     }
 }
 
+/// Ground station picked this phone as the rescuer.
+struct DispatchBanner: View {
+    @EnvironmentObject var session: ScanSession
+
+    var body: some View {
+        if let d = session.dispatchNotice {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Label("You're the rescuer", systemImage: "light.beacon.max.fill")
+                        .font(.headline).foregroundStyle(.white)
+                    Spacer()
+                    Button { session.dispatchNotice = nil } label: { Image(systemName: "xmark").foregroundStyle(.white.opacity(0.8)) }
+                        .buttonStyle(.plain)
+                }
+                Text("The ground station sent you to: \(d.names.joined(separator: ", "))")
+                    .font(.subheadline).foregroundStyle(.white)
+                Text(session.running ? "Mission mode is guiding you there. Follow the arrow."
+                                     : "Tap Start (on the shared mark) and Mission mode will guide you there.")
+                    .font(.caption).foregroundStyle(.white.opacity(0.85))
+            }
+            .padding(12)
+            .background(Color.red.gradient, in: RoundedRectangle(cornerRadius: 14))
+            .padding(.horizontal).padding(.bottom, 8)
+        }
+    }
+}
+
 /// Status line after relaying/forwarding (auto-hides).
 struct RelayStatusLine: View {
     let text: String?

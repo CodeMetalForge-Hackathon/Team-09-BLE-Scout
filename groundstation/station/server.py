@@ -75,6 +75,7 @@ class Station:
         self.url = ""
         self.team = ""          # set when pulling from the Supabase relay
         self.relays: list[dict] = []  # signal relays (phone -> phone -> ... -> rescuer), oldest first
+        self.dispatches: dict[str, dict] = {}  # rescuer phone id -> target the ground station sent it to
 
     def ingest(self, batch: dict) -> Phone:
         pid = str(batch.get("phoneId") or "").strip()
@@ -128,15 +129,19 @@ class Station:
         """Newest relay per signal: its full chain of hops, for drawing."""
         latest: dict[str, dict] = {}
         for r in self.relays:
+            if r.get("kind") == "dispatch":
+                continue
             latest[r.get("target_name", "?")] = r
-        return [{"target": k, "x": r.get("target_x"), "y": r.get("target_y"), "radius": r.get("target_radius"),
+        return [{"target": k, "kind": r.get("kind", "relay"), "x": r.get("target_x"), "y": r.get("target_y"), "radius": r.get("target_radius"),
                  "chain": r.get("chain") or [], "hops": r.get("hop", 0), "ago": round(now - r["receivedAt"], 1)}
                 for k, r in latest.items()]
 
     def state(self) -> dict:
         now = time.time()
         return {
-            "relays": self.relay_chains(now),
+            "relays": [r for r in self.relay_chains(now) if r.get("kind", "relay") != "dispatch"],
+            "dispatches": [{**d, "ago": round(now - d["at"])} for d in self.dispatches.values()],
+            "cloud": bool(self.team),
             "url": self.url,
             "team": self.team,
             "sessionDir": str(self.session_dir),
@@ -147,6 +152,7 @@ class Station:
     def reset(self) -> None:
         self.phones = {}
         self.relays = []
+        self.dispatches = {}
         self.session_dir = self.data_dir / time.strftime("session-%Y%m%d-%H%M%S")
 
 
@@ -174,6 +180,33 @@ def build_app(station: Station) -> web.Application:
         body.setdefault("phoneId", req.match_info["pid"])
         phone = station.ingest(body)
         return web.json_response({"ok": True, "color": phone.color, "phones": len(station.phones)})
+
+    @routes.post("/api/dispatch")
+    async def dispatch(req):
+        """Send one phone (the rescuer) to a target: written to Supabase for that phone to pick up."""
+        cfg = req.app.get("cloud_cfg")
+        if cfg is None:
+            raise web.HTTPServiceUnavailable(text="Dispatch needs the cloud relay (groundstation/.env).")
+        b = await req.json()
+        phone = station.phones.get(str(b.get("phoneId", "")))
+        t = b.get("target") or {}
+        if phone is None or "x" not in t or "y" not in t:
+            raise web.HTTPBadRequest(text="need phoneId and target {x, y, names}")
+        names = [str(n) for n in (t.get("names") or [])][:12] or ["Target"]
+        row = {"team": cfg.team, "from_phone": "ground-station", "from_name": "Ground station",
+               "target_name": names[0][:80], "target_names": names,
+               "target_x": float(t["x"]), "target_y": float(t["y"]),
+               "target_radius": float(t.get("radius") or 1.5), "hop": 0, "chain": [],
+               "kind": "dispatch", "to_phone": phone.id}
+        from .cloud import insert_relay  # local import: cloud imports this module
+        try:
+            await insert_relay(cfg, row)
+        except Exception as e:
+            raise web.HTTPBadGateway(text=f"{e}. Has the dispatch SQL (kind/to_phone/target_names) been run?")
+        station.dispatches[phone.id] = {"phoneId": phone.id, "phone": phone.name, "x": row["target_x"],
+                                        "y": row["target_y"], "names": names, "at": time.time()}
+        print(f"  {time.strftime('%H:%M:%S')}  dispatch: '{phone.name}' sent to {', '.join(names[:3])}", flush=True)
+        return web.json_response({"ok": True})
 
     @routes.post("/api/reset")
     async def reset(_):
