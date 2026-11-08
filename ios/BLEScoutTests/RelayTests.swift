@@ -28,11 +28,13 @@ final class RelayTests: XCTestCase {
         XCTAssertEqual(plan.current?.count, 4, "after finding it, back to the hot spots")
     }
 
-    func testOnlyOneRelayedTargetAtATime() {
+    func testRescueSignalsQueueAndUpdateInPlace() {
         var plan = MissionPlanner()
         plan.setRelayTarget(name: "A", x: 1, y: 1, radius: 1, note: "", deviceIDs: [], from: nil)
-        plan.setRelayTarget(name: "B", x: 2, y: 2, radius: 1, note: "", deviceIDs: [], from: nil)
-        XCTAssertEqual(plan.targets.filter(\.external).map(\.names), [["B"]])
+        plan.upsertExternal(key: "B", names: ["B"], x: 2, y: 2, radius: 1, note: "", deviceIDs: [], lock: false, from: nil)
+        plan.upsertExternal(key: "A", names: ["A"], x: 1.2, y: 1, radius: 1, note: "", deviceIDs: [], lock: false, from: nil)
+        XCTAssertEqual(plan.externals.map { $0.names }, [["A"], ["B"]], "same signal updates, new one queues")
+        XCTAssertEqual(plan.current?.names, ["A"], "still locked on A")
     }
 
     func testDispatchRowDecodes() throws {

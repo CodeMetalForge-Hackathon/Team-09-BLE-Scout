@@ -74,6 +74,9 @@
     <span id="sendMsg" class="sub"></span>
   </div>
 
+  <h2>Rescued (tagged by a rescuer)</h2>
+  <div id="cleared" class="sub">None yet.</div>
+
   <h2>Signal relays</h2>
   <div id="relays" class="sub">None yet.</div>
 
@@ -341,6 +344,8 @@ function draw() {
     }
     // hot spots
     for (const h of p.hotSpots) {
+      if ((S.heldSpots || []).some(b => samePlace(b, h))) continue;  // drawn as a held spot
+      if (clearedFor(h)) continue;                                     // rescued: drawn as a ✓
       const [x, y] = P(h.x, h.y), r = Math.max(h.spread * k, 12);
       hits.push({kind: 'spot', sx: x, sy: y, r, target: {x: h.x, y: h.y, names: h.names || [], count: h.count, radius: (h.spread || 1) + (h.uncertainty || 0.5)}});
       if (sel.target && Math.hypot(sel.target.x - h.x, sel.target.y - h.y) < 0.05) {
@@ -380,9 +385,48 @@ function draw() {
     }
     ctx.globalAlpha = 1;
   }
+  drawHeld(P, k);
   drawRelays(P);
   drawDispatches(P);
+  drawCleared(P);
   ctx.textAlign = 'start';
+}
+
+// Big hot spots (7+ signals) held on the map once seen, even if phones' latest views drop them
+function drawHeld(P, k) {
+  for (const h of S.heldSpots || []) {
+    if (h.rescued) continue;
+    const [x, y] = P(h.x, h.y), r = Math.max((h.spread || 1) * k, 16);
+    hits.push({kind: 'spot', sx: x, sy: y, r, target: {x: h.x, y: h.y, names: h.names, count: h.count, radius: (h.spread || 1) + (h.uncertainty || 1)}});
+    ctx.save();
+    ctx.lineWidth = 7; ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.stroke();
+    ctx.lineWidth = 4; ctx.strokeStyle = '#ffd23d'; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.stroke();
+    if (sel.target && Math.hypot(sel.target.x - h.x, sel.target.y - h.y) < 0.05) {
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y, r + 7, 0, 7); ctx.stroke();
+    }
+    ctx.font = 'bold 16px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.85)'; ctx.strokeText(h.count, x, y);
+    ctx.fillStyle = '#ffd23d'; ctx.fillText(h.count, x, y); ctx.textBaseline = 'alphabetic';
+    ctx.font = '600 11px system-ui'; ctx.textAlign = 'left';
+    ctx.strokeText('held', x + r + 4, y - r * 0.6); ctx.fillText('held', x + r + 4, y - r * 0.6);
+    ctx.restore();
+  }
+}
+
+// Targets a rescuer tagged: green check + who
+function drawCleared(P) {
+  for (const c of S.cleared || []) {
+    const [x, y] = P(c.x, c.y);
+    ctx.save();
+    ctx.beginPath(); ctx.arc(x, y, 14, 0, 7); ctx.fillStyle = '#123d2a'; ctx.fill();
+    ctx.lineWidth = 3; ctx.strokeStyle = '#3ecf8e'; ctx.stroke();
+    ctx.font = 'bold 16px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#3ecf8e'; ctx.fillText('✓', x, y); ctx.textBaseline = 'alphabetic';
+    ctx.font = '600 12px system-ui'; ctx.textAlign = 'left'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+    const label = `Rescued by ${c.by}`;
+    ctx.strokeText(label, x + 18, y + 4); ctx.fillText(label, x + 18, y + 4);
+    ctx.restore();
+  }
 }
 
 // Dispatches: thick red line from the rescuer to where the ground station sent them
@@ -472,15 +516,31 @@ function render() {
       ${p.missionTarget ? `<div class="sub" style="color:#ffb020">→ heading to ${esc((p.missionTarget.names || []).slice(0, 3).join(', '))}</div>` : ''}
     </div>`).join('') : 'None yet.');
 
-  const spots = S.phones.flatMap(p => p.hotSpots.map(h => ({...h, phone: p})))
-                        .sort((a, b) => b.count - a.count);
+  setHTML('cleared', (S.cleared || []).length ? S.cleared.slice().reverse().map(c => `
+    <div class="card" style="--c:#3ecf8e"><div class="row"><b>✓ ${esc(c.label || (c.names || [])[0] || 'Target')}</b>
+      <span class="pill on">${Math.round(c.ago / 60)} min ago</span></div>
+      <div class="sub">Tagged by ${esc(c.by)} · ${fromStart(c.x, c.y)} of start</div></div>`).join('') : 'None yet.');
+
+  const held = (S.heldSpots || []).filter(h => !h.rescued).map(h => ({...h, held: true, phone: {name: (h.seenBy || []).join(', '), color: '#ffd23d'}}));
+  const live = S.phones.flatMap(p => p.hotSpots.map(h => ({...h, phone: p})))
+                       .filter(h => !held.some(b => samePlace(b, h)) && !clearedFor(h));
+  const spots = held.concat(live).sort((a, b) => b.count - a.count);
   spotList = spots;
   setHTML('spots', spots.length ? spots.map((h, i) => `
     <div class="spot" style="--c:${h.phone.color}"><span class="dot"></span>
-      <div><b>${h.count} device${h.count === 1 ? '' : 's'}</b>${h.roughCount === h.count ? ' <span class="pill">rough</span>' : ''}
+      <div><b>${h.count} device${h.count === 1 ? '' : 's'}</b>${h.held ? ' <span class="pill mission">held</span>' : ''}${h.roughCount === h.count ? ' <span class="pill">rough</span>' : ''}
         <span class="sub">· seen by ${esc(h.phone.name)}</span><button class="mini" onpointerdown="pickSpot(${i})">Target</button><br>
         <span class="sub">${fromStart(h.x, h.y)} of start · ${esc((h.names || []).slice(0, 4).join(', '))}</span></div>
     </div>`).join('') : 'None yet.');
+}
+
+// same place: 2+ shared device names, or within 2 m
+function samePlace(a, b) {
+  const shared = (a.names || []).filter(n => (b.names || []).includes(n)).length;
+  return shared >= 2 || Math.hypot(a.x - b.x, a.y - b.y) < 2;
+}
+function clearedFor(spot) {
+  return (S.cleared || []).find(c => (spot.names || []).some(n => c.names.includes(n)) || Math.hypot(spot.x - c.x, spot.y - c.y) < 2);
 }
 
 // The ground station only treats a place as a hot spot with at least this many signals

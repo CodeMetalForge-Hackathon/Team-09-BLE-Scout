@@ -56,6 +56,7 @@ final class ScanSession: ObservableObject {
     private var namedIDs = Set<String>(), unnamedIDs = Set<String>()
     private var bestFixes: [String: DeviceFix] = [:]   // most confident position per device, whole session
     private var windowCounter = WindowCounter()         // in how many 5 s windows each device was heard
+    private var heldSpots: [Cluster] = []                // big hot spots kept on the map once seen
     @Published private(set) var ignoredIDs = Set<String>() // "it's us": team / own devices, dropped for this scan
     private var knownNames: [String: String] = [:]
     private var analysisTask: Task<Void, Never>?
@@ -72,6 +73,8 @@ final class ScanSession: ObservableObject {
         scanner.onSample = { [weak self] s in Task { @MainActor in self?.add(sample: s) } }
         scanner.onStatus = { [weak self] s in Task { @MainActor in self?.bluetoothStatus = s } }
         relays.onDispatch = { [weak self] r in self?.receiveDispatch(r) }
+        relays.onRelay = { [weak self] r in self?.receiveRelay(r) }
+        relays.onCleared = { [weak self] r in self?.receiveCleared(r) }
     }
 
     // MARK: - Control
@@ -111,6 +114,8 @@ final class ScanSession: ObservableObject {
 
     private func begin() {
         running = true
+        // rescue signals that arrived before we started scanning join the plan now
+        for r in relays.incoming.reversed() { receiveRelay(r, quiet: true) }
         if let d = pendingDispatch { DispatchQueue.main.async { [weak self] in self?.applyDispatch(d) } }
         UIApplication.shared.isIdleTimerDisabled = true // keep the screen on while walking
         scanner.start()
@@ -134,7 +139,7 @@ final class ScanSession: ObservableObject {
         poses = []; allPoses = []; samples = []; current = nil; result = nil; nearby = []
         mission.reset(); arrivedTargetID = nil; targetSignal = nil; signalHistory = []
         namedIDs = []; unnamedIDs = []; namedHeard = 0; unnamedIgnored = 0
-        bestFixes = [:]; knownNames = [:]; ignoredIDs = []; windowCounter.reset()
+        bestFixes = [:]; knownNames = [:]; ignoredIDs = []; windowCounter.reset(); heldSpots = []
     }
 
     func reanalyze() { Task { await analyze() } }
@@ -200,9 +205,45 @@ final class ScanSession: ObservableObject {
 
     var hasHotSpots: Bool { !(result?.clusters.isEmpty ?? true) }
 
+    /// Check in at the current target. Tells the fleet, so the ground station marks it and
+    /// other rescuers drop it from their plans.
     func clearTarget() {
+        if let t = mission.current {
+            let key = t.externalKey ?? t.names.prefix(3).joined(separator: " · ")
+            let names = t.matchNames, x = t.goalX, y = t.goalY, me = allPoses.last
+            Task { _ = await relays.sendCleared(key: key, names: names, x: x, y: y, me: me) }
+        }
         mission.clearCurrent(from: current)
         afterTargetChange()
+    }
+
+    /// A rescue signal relayed by another phone: straight into the Mission plan (ahead of ordinary
+    /// hot spots). If we're navigating to an ordinary hot spot, switch to the rescue right away.
+    func receiveRelay(_ r: RelayMessage, quiet: Bool = false) {
+        guard running else { return } // added when scanning starts (see begin())
+        let wanted = Set(r.names)
+        let ownIDs = Set((result?.devices ?? []).filter { wanted.contains($0.name) }.map(\.id))
+        let preempt = screen == .mission && !(mission.current?.external ?? false)
+        let hops = r.chain.count
+        mission.upsertExternal(key: r.target_name, names: r.names, x: r.target_x, y: r.target_y,
+                               radius: r.target_radius ?? 2,
+                               note: "🆘 Rescue signal from \(r.originName)" + (hops > 1 ? " · relayed through \(hops) phones" : ""),
+                               deviceIDs: ownIDs, lock: preempt, from: current)
+        if preempt { arrivedTargetID = nil; afterTargetChange() }
+        guard !quiet else { return }
+        relayStatus = "🆘 Rescue signal: \(r.target_name) is now at the top of your Mission plan"
+        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+    }
+
+    /// Another rescuer tagged a target: drop it here too.
+    func receiveCleared(_ r: RelayMessage) {
+        let hitCurrent = mission.clearMatching(names: Set(r.names), x: r.target_x, y: r.target_y)
+        relays.dismissed.formUnion(relays.incoming.filter { !Set($0.names).isDisjoint(with: Set(r.names)) }.map(\.id))
+        relayStatus = "✅ \(r.target_name) was tagged by \(r.from_name ?? "another rescuer")"
+        if hitCurrent {
+            afterTargetChange()
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+        }
     }
 
     func skipTarget() {
@@ -228,11 +269,10 @@ final class ScanSession: ObservableObject {
         pendingDispatch = nil
         let names = Set(r.names)
         let ownIDs = Set((result?.devices ?? []).filter { names.contains($0.name) }.map(\.id))
-        mission.setRelayTarget(name: r.names.joined(separator: " · "), x: r.target_x, y: r.target_y,
-                               radius: r.target_radius ?? 2,
-                               note: "Dispatched by the ground station" + (r.chain.isEmpty ? "" : " · via \(r.chain.map(\.name).joined(separator: " → "))"),
-                               deviceIDs: ownIDs, from: current)
-        mission.setRelayNames(r.names)
+        mission.upsertExternal(key: r.names.prefix(3).joined(separator: " · "), names: r.names,
+                               x: r.target_x, y: r.target_y, radius: r.target_radius ?? 2,
+                               note: "Dispatched by the ground station",
+                               deviceIDs: ownIDs, lock: true, from: current)
         arrivedTargetID = nil
         screen = .mission
     }
@@ -282,9 +322,8 @@ final class ScanSession: ObservableObject {
         let wanted = Set(r.names)
         let ownIDs = Set((result?.devices ?? []).filter { wanted.contains($0.name) }.map(\.id))
         let note = "Relayed from \(r.originName) through \(r.chain.count) phone\(r.chain.count == 1 ? "" : "s")"
-        mission.setRelayTarget(name: r.target_name, x: r.target_x, y: r.target_y, radius: r.target_radius ?? 2,
-                               note: note, deviceIDs: ownIDs, from: current)
-        mission.setRelayNames(r.names)
+        mission.upsertExternal(key: r.target_name, names: r.names, x: r.target_x, y: r.target_y,
+                               radius: r.target_radius ?? 2, note: note, deviceIDs: ownIDs, lock: true, from: current)
         arrivedTargetID = nil
         relays.dismissed.insert(r.id)
         screen = .mission
@@ -439,24 +478,27 @@ final class ScanSession: ObservableObject {
         // Only devices heard repeatedly (in 3+ separate 5 s windows) count toward hot spots, so a
         // passer-by or a one-off far-away advert can't create one. All readings still feed positions.
         let counter = windowCounter
-        let clusters = Localizer.hotSpots(
-            Localizer.makeClusters(fixes.filter { $0.status.isPlaced && counter.isConsistent($0.id) }, link: params.link),
-            minDevices: params.minHotSpotDevices)
+        let found = Localizer.makeClusters(fixes.filter { $0.status.isPlaced && counter.isConsistent($0.id) },
+                                             link: params.link).filter { $0.count >= params.minHotSpotDevices }
+        // Big hot spots (more than 6 devices) stay on the map even if a later analysis shrinks
+        // or loses them as people move around.
+        let clusters = Localizer.hotSpots(Localizer.holdBigSpots(found, held: &heldSpots, minHeld: params.minHeldDevices),
+                                          minDevices: params.minHotSpotDevices)
         let r = AnalysisResult(devices: fixes, clusters: clusters,
                                heat: Localizer.heat(from: fixes, poses: p) ?? fresh.heat)
         result = r
         mission.update(with: r.clusters, from: current)
         if screen == .mission { mission.lockCurrent() }
         // A relayed target we can now hear ourselves (matched by name): use our own fix.
-        if let rt = mission.relayTarget {
+        for rt in mission.externals {
             let wanted = Set(rt.matchNames)
             let mine = fixes.filter { wanted.contains($0.name) && $0.status.isPlaced }
             if let best = mine.min(by: { ($0.status.rank, -$0.radius) > ($1.status.rank, -$1.radius) }) {
                 // several devices of the target heard here: centre on them, report the best precision
                 let cx = mine.map(\.x).reduce(0, +) / Double(mine.count)
                 let cy = mine.map(\.y).reduce(0, +) / Double(mine.count)
-                mission.refineRelayTarget(x: mine.count > 1 ? cx : best.x, y: mine.count > 1 ? cy : best.y,
-                                          radius: best.radius, deviceIDs: Set(mine.map(\.id)))
+                mission.refineExternal(rt.id, x: mine.count > 1 ? cx : best.x, y: mine.count > 1 ? cy : best.y,
+                                       radius: best.radius, deviceIDs: Set(mine.map(\.id)))
             }
         }
     }

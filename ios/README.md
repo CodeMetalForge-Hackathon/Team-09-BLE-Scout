@@ -83,6 +83,12 @@ mark. Only named devices can be relayed (iOS gives each device a different ID pe
 rescuer" banner appears and Mission mode heads for the target (as soon as you press Start,
 if you weren't scanning).
 
+**Rescue coordination:** a relayed rescue signal goes straight into every rescuer's Mission
+plan (ahead of ordinary hot spots, and switching navigation to it if you were heading to an
+ordinary one). When a rescuer taps **Cleared**, the fleet is told: the ground station marks
+it ✓ Rescued by them and drops its relay chain, and other rescuers drop it from their plans.
+Hot spots with more than 6 devices are **held** on the map once seen, even if people move.
+
 **Hot spots & Nearby:** a hot spot needs **3+ named devices** that have each been heard in
 **3 separate 5-second windows** (passers-by and one-off blips don't count; every reading
 still feeds positioning). **Nearby** lists the top 5 closest steady signals (median over the

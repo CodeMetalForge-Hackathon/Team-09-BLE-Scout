@@ -25,6 +25,8 @@ struct MissionTarget: Identifiable, Equatable {
     /// Device names to match against our own scan (a dispatched hot spot can hold several).
     var relayNames: [String]? = nil
     var matchNames: [String] { relayNames ?? names }
+    /// Identifies a relayed signal across updates (its name).
+    var externalKey: String? = nil
     var count: Int { deviceIDs.count }
     var pinned: Bool { pinX != nil }
     /// Ranking weight: confidently placed devices count 1, rough ones 0.5.
@@ -136,21 +138,45 @@ struct MissionPlanner {
         targets[i].pinX = x; targets[i].pinY = y; targets[i].pinNote = note
     }
 
-    /// Head for a signal relayed from another phone: goes to the top of the plan.
-    mutating func setRelayTarget(name: String, x: Double, y: Double, radius: Double, note: String,
-                                 deviceIDs: Set<String>, from pose: Pose?) {
-        targets.removeAll { $0.external }
-        let t = MissionTarget(id: UUID(), deviceIDs: deviceIDs, names: [name], x: x, y: y,
+    /// Add (or update) a rescue signal relayed from another phone or dispatched by the ground
+    /// station. Several can queue; they rank ahead of ordinary hot spots. `lock` switches
+    /// navigation to it now. `key` identifies the signal across updates (its name).
+    @discardableResult
+    mutating func upsertExternal(key: String, names: [String], x: Double, y: Double, radius: Double, note: String,
+                                 deviceIDs: Set<String>, lock: Bool, from pose: Pose?) -> UUID {
+        if let i = targets.firstIndex(where: { $0.external && $0.status != .cleared && $0.externalKey == key }) {
+            let moved = hypot(x - targets[i].x, y - targets[i].y)
+            targets[i].x = Self.smoothed(targets[i].x, x, moved: moved)
+            targets[i].y = Self.smoothed(targets[i].y, y, moved: moved)
+            targets[i].uncertainty = min(max(radius, 0.5), 3)
+            targets[i].relayNote = note
+            targets[i].relayNames = names
+            if !deviceIDs.isEmpty { targets[i].deviceIDs = deviceIDs }
+            if lock { lockedID = targets[i].id }
+            rank(from: pose)
+            return targets[i].id
+        }
+        var t = MissionTarget(id: UUID(), deviceIDs: deviceIDs, names: [key], x: x, y: y,
                               spread: 0.5, uncertainty: min(max(radius, 0.5), 3),
                               external: true, relayNote: note)
+        t.relayNames = names
+        t.externalKey = key
         targets.append(t)
-        lockedID = t.id  // a relayed/dispatched target is a deliberate switch
+        if lock { lockedID = t.id }  // a deliberate switch (Find it, dispatch, or a new rescue signal)
         rank(from: pose)
+        return t.id
     }
 
-    /// Our own scanner has located the relayed device: use our fix for the last metres.
-    mutating func refineRelayTarget(x: Double, y: Double, radius: Double, deviceIDs: Set<String>) {
-        guard let i = targets.firstIndex(where: { $0.external && $0.status != .cleared }) else { return }
+    /// Head for a relayed signal now (Find it / dispatch).
+    mutating func setRelayTarget(name: String, x: Double, y: Double, radius: Double, note: String,
+                                 deviceIDs: Set<String>, from pose: Pose?) {
+        upsertExternal(key: name, names: [name], x: x, y: y, radius: radius, note: note,
+                       deviceIDs: deviceIDs, lock: true, from: pose)
+    }
+
+    /// Our own scanner has located a relayed device: ease toward our own fix for the last metres.
+    mutating func refineExternal(_ id: UUID, x: Double, y: Double, radius: Double, deviceIDs: Set<String>) {
+        guard let i = targets.firstIndex(where: { $0.id == id }) else { return }
         let moved = hypot(x - targets[i].x, y - targets[i].y)
         targets[i].x = Self.smoothed(targets[i].x, x, moved: moved)
         targets[i].y = Self.smoothed(targets[i].y, y, moved: moved)
@@ -161,12 +187,38 @@ struct MissionPlanner {
         }
     }
 
+    /// Back-compat: refine the first open relayed target.
+    mutating func refineRelayTarget(x: Double, y: Double, radius: Double, deviceIDs: Set<String>) {
+        if let t = relayTarget { refineExternal(t.id, x: x, y: y, radius: radius, deviceIDs: deviceIDs) }
+    }
+
     mutating func setRelayNames(_ names: [String]) {
-        guard let i = targets.firstIndex(where: { $0.external && $0.status != .cleared }) else { return }
+        guard let l = lockedID, let i = targets.firstIndex(where: { $0.id == l && $0.external }) else { return }
         targets[i].relayNames = names
     }
 
-    var relayTarget: MissionTarget? { targets.first { $0.external && $0.status != .cleared } }
+    /// Open relayed/dispatched targets.
+    var externals: [MissionTarget] { targets.filter { $0.external && $0.status != .cleared } }
+    var relayTarget: MissionTarget? { externals.first }
+
+    /// Another rescuer tagged (cleared) a target: mark ours cleared too if it's the same one —
+    /// same device names, or the same spot (within 2 m). Returns true if our current target went.
+    @discardableResult
+    mutating func clearMatching(names: Set<String>, x: Double, y: Double) -> Bool {
+        let wasCurrent = current?.id
+        var hitCurrent = false
+        for i in targets.indices where targets[i].status != .cleared {
+            let t = targets[i]
+            let sameDevices = !names.isDisjoint(with: Set(t.matchNames))
+            let sameSpot = hypot(t.goalX - x, t.goalY - y) < 2.0
+            if sameDevices || sameSpot {
+                targets[i].status = .cleared
+                if t.id == wasCurrent { hitCurrent = true }
+                if t.id == lockedID { lockedID = nil }
+            }
+        }
+        return hitCurrent
+    }
 
     /// Forget a target entirely (e.g. it was the team's own devices).
     mutating func drop(_ id: UUID) {

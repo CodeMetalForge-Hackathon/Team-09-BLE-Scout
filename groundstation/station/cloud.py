@@ -82,8 +82,8 @@ async def poll_relays(cfg: CloudConfig, station: Station, interval: float = 1.0,
                 for row in rows:
                     last_id = row["id"]
                     station.add_relay(row)
-                    if row.get("kind") == "dispatch":
-                        continue  # already logged when the dashboard sent it
+                    if row.get("kind") in ("dispatch", "cleared"):
+                        continue  # logged by the dashboard / add_relay
                     names = " → ".join(h.get("name", "?") for h in row.get("chain") or [])
                     print(f"  {time.strftime('%H:%M:%S')}  relay: '{row.get('target_name')}' via {names}"
                           f" (hop {row.get('hop')})", flush=True)
