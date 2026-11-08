@@ -55,6 +55,7 @@ final class ScanSession: ObservableObject {
     private var lastPosePublish: TimeInterval = 0
     private var namedIDs = Set<String>(), unnamedIDs = Set<String>()
     private var bestFixes: [String: DeviceFix] = [:]   // most confident position per device, whole session
+    private var windowCounter = WindowCounter()         // in how many 5 s windows each device was heard
     @Published private(set) var ignoredIDs = Set<String>() // "it's us": team / own devices, dropped for this scan
     private var knownNames: [String: String] = [:]
     private var analysisTask: Task<Void, Never>?
@@ -133,7 +134,7 @@ final class ScanSession: ObservableObject {
         poses = []; allPoses = []; samples = []; current = nil; result = nil; nearby = []
         mission.reset(); arrivedTargetID = nil; targetSignal = nil; signalHistory = []
         namedIDs = []; unnamedIDs = []; namedHeard = 0; unnamedIgnored = 0
-        bestFixes = [:]; knownNames = [:]; ignoredIDs = []
+        bestFixes = [:]; knownNames = [:]; ignoredIDs = []; windowCounter.reset()
     }
 
     func reanalyze() { Task { await analyze() } }
@@ -158,6 +159,7 @@ final class ScanSession: ObservableObject {
         // Keep every reading, named or not, so the "include unnamed" switch can apply to the whole scan.
         // Many devices only send their name in some adverts, so "named" is decided per device, not per reading.
         samples.append(sample)
+        windowCounter.add(sample.id, at: sample.t)
         if spinning, spinDevices.contains(sample.id), let h = allPoses.last?.heading {
             spinData.append(SpinReading(heading: h, device: sample.id, rssi: Double(sample.rssi)))
         }
@@ -173,19 +175,21 @@ final class ScanSession: ObservableObject {
         if sample.t - lastNearbyUpdate > 0.5 { updateNearby(now: sample.t) }
     }
 
+    /// Nearby = the top 5 close *and consistent* signals: median strength over the last 5 s,
+    /// heard at least 3 times in that window (one-off blips don't make the list).
     private func updateNearby(now: TimeInterval) {
         lastNearbyUpdate = now
-        var best: [String: NearbyDevice] = [:]
-        for s in samples.reversed() {
-            if now - s.t > 3 { break }
-            let name = knownNames[s.id]
-            if name == nil && !includeUnnamed { continue }
-            if ignoredIDs.contains(s.id) { continue }
-            if let b = best[s.id], b.rssi >= s.rssi { continue }
-            best[s.id] = NearbyDevice(id: s.id, name: name ?? "Unnamed · \(s.id.prefix(4))", rssi: s.rssi)
+        let steady = SignalWindow.consistentMedians(samples[...], now: now)
+        nearby = steady.compactMap { id, rssi -> NearbyDevice? in
+            let name = knownNames[id]
+            if (name == nil && !includeUnnamed) || ignoredIDs.contains(id) { return nil }
+            return NearbyDevice(id: id, name: name ?? "Unnamed · \(id.prefix(4))", rssi: Int(rssi.rounded()))
         }
-        nearby = best.values.sorted { $0.rssi > $1.rssi }
-        updateTargetSignal(now: now, loudest: best)
+        .sorted { $0.rssi > $1.rssi }
+        .prefix(SignalWindow.topCount)
+        .map { $0 }
+        // the mission target may be heard less often: 2 readings in the window is enough for its meter
+        updateTargetSignal(now: now, medians: SignalWindow.consistentMedians(samples[...], now: now, minReadings: 2))
     }
 
     private func refreshNearby() {
@@ -391,9 +395,11 @@ final class ScanSession: ObservableObject {
         }
     }
 
-    private func updateTargetSignal(now: TimeInterval, loudest: [String: NearbyDevice]) {
+    private func updateTargetSignal(now: TimeInterval, medians: [String: Double]) {
         guard let t = mission.current else { targetSignal = nil; return }
-        guard let rssi = t.deviceIDs.compactMap({ loudest[$0]?.rssi }).max() else { targetSignal = nil; return }
+        // steady (5 s median) strength of the target's loudest device: no flicker from single readings
+        guard let m = t.deviceIDs.compactMap({ medians[$0] }).max() else { targetSignal = nil; return }
+        let rssi = Int(m.rounded())
         signalHistory.append((now, rssi))
         signalHistory.removeAll { now - $0.t > 8 }
         // compare the last ~2 s with what we heard ~4-6 s ago
@@ -430,7 +436,12 @@ final class ScanSession: ObservableObject {
             }
         }
         let fixes = bestFixes.values.filter { (include || $0.named) && !ignored.contains($0.id) }.sorted { $0.name < $1.name }
-        let clusters = Localizer.makeClusters(fixes.filter { $0.status.isPlaced }, link: params.link)
+        // Only devices heard repeatedly (in 3+ separate 5 s windows) count toward hot spots, so a
+        // passer-by or a one-off far-away advert can't create one. All readings still feed positions.
+        let counter = windowCounter
+        let clusters = Localizer.hotSpots(
+            Localizer.makeClusters(fixes.filter { $0.status.isPlaced && counter.isConsistent($0.id) }, link: params.link),
+            minDevices: params.minHotSpotDevices)
         let r = AnalysisResult(devices: fixes, clusters: clusters,
                                heat: Localizer.heat(from: fixes, poses: p) ?? fresh.heat)
         result = r

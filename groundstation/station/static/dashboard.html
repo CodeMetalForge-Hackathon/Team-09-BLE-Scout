@@ -483,8 +483,16 @@ function render() {
     </div>`).join('') : 'None yet.');
 }
 
+// The ground station only treats a place as a hot spot with at least this many signals
+// (phones use 3+ named devices; the shared map is stricter to keep it uncluttered).
+const MIN_HOTSPOT_DEVICES = 5;
+
 async function refresh() {
-  try { S = await (await fetch('/api/state')).json(); render(); }
+  try {
+    S = await (await fetch('/api/state')).json();
+    for (const p of S.phones) p.hotSpots = (p.hotSpots || []).filter(h => (h.count || 0) >= MIN_HOTSPOT_DEVICES);
+    render();
+  }
   catch (e) { $('status').textContent = 'Lost connection to the ground station server…'; }
 }
 refresh(); setInterval(refresh, 1000);

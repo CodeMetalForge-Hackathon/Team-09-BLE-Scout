@@ -56,3 +56,14 @@ final class LockTests: XCTestCase {
         XCTAssertEqual(plan.lockedID, plan.current?.id)
     }
 }
+
+final class HotSpotThresholdTests: XCTestCase {
+    func testOnlyClustersWithThreeOrMoreDevicesAreHotSpots() {
+        func c(_ id: String, _ n: Int) -> Cluster {
+            Cluster(id: id, x: Double(n), y: 0, names: [], deviceIDs: (0..<n).map { "\(id)\($0)" }, spread: 1, uncertainty: 1)
+        }
+        let spots = Localizer.hotSpots([c("A", 5), c("B", 2), c("C", 3), c("D", 1)], minDevices: 3)
+        XCTAssertEqual(spots.map(\.count), [5, 3])
+        XCTAssertEqual(spots.map(\.id), ["A", "B"], "re-lettered with no gaps")
+    }
+}
