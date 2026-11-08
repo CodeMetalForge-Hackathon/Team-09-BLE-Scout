@@ -8,7 +8,8 @@ Run on the Pi:
     sudo ~/venv/bin/python ~/scan.py
     sudo ~/venv/bin/python ~/scan.py --csv ~/scan.csv
 
-Stop with Ctrl-C.
+Stop with Ctrl-C. To upload readings to the team's Supabase relay instead of
+just listing them, use upload.py (see README.md).
 """
 
 from __future__ import annotations

@@ -8,6 +8,8 @@ and **Spin to pinpoint** narrows down the last few metres.
 - [`ios/`](ios/): the BLE Scout iPhone app.
 - [`groundstation/`](groundstation/): a laptop web app where every phone's scan shows up on
   one live team map. Run `cd groundstation && uv run groundstation`.
+- [`pi/`](pi/): a headless Raspberry Pi scanner that uploads Bluetooth readings to the same
+  Supabase relay, so it shows up as another device.
 
 The app is in [`ios/`](ios/). See the [iOS README](ios/README.md) for how to run it on
 your iPhone, how to use it, how it works, and how to upload to TestFlight.
