@@ -22,6 +22,9 @@ struct MissionTarget: Identifiable, Equatable {
     /// A relayed signal from another phone ("find this device"), not one of our own hot spots.
     var external = false
     var relayNote: String? = nil
+    /// Device names to match against our own scan (a dispatched hot spot can hold several).
+    var relayNames: [String]? = nil
+    var matchNames: [String] { relayNames ?? names }
     var count: Int { deviceIDs.count }
     var pinned: Bool { pinX != nil }
     /// Ranking weight: confidently placed devices count 1, rough ones 0.5.
@@ -40,10 +43,39 @@ struct MissionTarget: Identifiable, Equatable {
 /// Keeps an ordered plan of hot spots to visit: most devices first.
 struct MissionPlanner {
     private(set) var targets: [MissionTarget] = []
+    /// Once navigation to a target starts it stays the target (no switching mid-walk) until
+    /// it's cleared or skipped. Re-ranking only changes what comes after it.
+    private(set) var lockedID: UUID?
 
-    /// The target to head for now.
-    var current: MissionTarget? { targets.first { $0.status == .pending } ?? targets.first { $0.status == .skipped } }
-    var remaining: [MissionTarget] { targets.filter { $0.status != .cleared } }
+    /// Smoothing for the locked target's position: ignore wobble under this many metres,
+    /// and move this fraction of the way to each new estimate.
+    static let wobble = 0.5
+    static let follow = 0.3
+
+    /// The target to head for now: the locked one if any, else the best-ranked.
+    var current: MissionTarget? {
+        if let l = lockedID, let t = targets.first(where: { $0.id == l && $0.status != .cleared }) { return t }
+        return targets.first { $0.status == .pending } ?? targets.first { $0.status == .skipped }
+    }
+    /// Still to visit, in order: the locked target first.
+    var remaining: [MissionTarget] {
+        let open = targets.filter { $0.status != .cleared }
+        guard let l = lockedID, let i = open.firstIndex(where: { $0.id == l }) else { return open }
+        var out = open
+        out.insert(out.remove(at: i), at: 0)
+        return out
+    }
+
+    /// Start (or keep) navigating: lock onto the current target if nothing is locked yet.
+    mutating func lockCurrent() {
+        if let l = lockedID, targets.contains(where: { $0.id == l && $0.status != .cleared }) { return }
+        lockedID = current?.id
+    }
+
+    /// Ease a locked target toward a new estimate instead of jumping.
+    private static func smoothed(_ old: Double, _ new: Double, moved: Double) -> Double {
+        moved < wobble ? old : old + follow * (new - old)
+    }
     var clearedCount: Int { targets.filter { $0.status == .cleared }.count }
 
     /// Merge freshly computed hot spots into the plan, keep cleared/skipped state,
@@ -65,7 +97,13 @@ struct MissionPlanner {
                 }
                 targets[i].deviceIDs = devs
                 targets[i].names = c.names
-                targets[i].x = c.x; targets[i].y = c.y
+                if targets[i].id == lockedID {
+                    let moved = hypot(c.x - targets[i].x, c.y - targets[i].y)
+                    targets[i].x = Self.smoothed(targets[i].x, c.x, moved: moved)
+                    targets[i].y = Self.smoothed(targets[i].y, c.y, moved: moved)
+                } else {
+                    targets[i].x = c.x; targets[i].y = c.y
+                }
                 targets[i].spread = c.spread; targets[i].uncertainty = c.uncertainty
                 targets[i].roughCount = c.roughCount
             } else {
@@ -77,7 +115,8 @@ struct MissionPlanner {
         }
         // Pending hot spots that vanished from the analysis (devices merged elsewhere or
         // became uncertain) are dropped; cleared ones stay for the record.
-        targets.removeAll { $0.status != .cleared && !$0.external && !matched.contains($0.id) }
+        // (The locked target is never dropped mid-walk: it keeps its last position.)
+        targets.removeAll { $0.status != .cleared && !$0.external && $0.id != lockedID && !matched.contains($0.id) }
         rank(from: pose)
     }
 
@@ -101,16 +140,20 @@ struct MissionPlanner {
     mutating func setRelayTarget(name: String, x: Double, y: Double, radius: Double, note: String,
                                  deviceIDs: Set<String>, from pose: Pose?) {
         targets.removeAll { $0.external }
-        targets.append(MissionTarget(id: UUID(), deviceIDs: deviceIDs, names: [name], x: x, y: y,
-                                     spread: 0.5, uncertainty: min(max(radius, 0.5), 3),
-                                     external: true, relayNote: note))
+        let t = MissionTarget(id: UUID(), deviceIDs: deviceIDs, names: [name], x: x, y: y,
+                              spread: 0.5, uncertainty: min(max(radius, 0.5), 3),
+                              external: true, relayNote: note)
+        targets.append(t)
+        lockedID = t.id  // a relayed/dispatched target is a deliberate switch
         rank(from: pose)
     }
 
     /// Our own scanner has located the relayed device: use our fix for the last metres.
     mutating func refineRelayTarget(x: Double, y: Double, radius: Double, deviceIDs: Set<String>) {
         guard let i = targets.firstIndex(where: { $0.external && $0.status != .cleared }) else { return }
-        targets[i].x = x; targets[i].y = y
+        let moved = hypot(x - targets[i].x, y - targets[i].y)
+        targets[i].x = Self.smoothed(targets[i].x, x, moved: moved)
+        targets[i].y = Self.smoothed(targets[i].y, y, moved: moved)
         targets[i].uncertainty = min(max(radius, 0.5), 3)
         targets[i].deviceIDs = deviceIDs
         if !(targets[i].relayNote ?? "").contains("heard here") {
@@ -118,10 +161,18 @@ struct MissionPlanner {
         }
     }
 
+    mutating func setRelayNames(_ names: [String]) {
+        guard let i = targets.firstIndex(where: { $0.external && $0.status != .cleared }) else { return }
+        targets[i].relayNames = names
+    }
+
     var relayTarget: MissionTarget? { targets.first { $0.external && $0.status != .cleared } }
 
     /// Forget a target entirely (e.g. it was the team's own devices).
-    mutating func drop(_ id: UUID) { targets.removeAll { $0.id == id } }
+    mutating func drop(_ id: UUID) {
+        targets.removeAll { $0.id == id }
+        if lockedID == id { lockedID = nil }
+    }
 
     mutating func clearCurrent(from pose: Pose?) { setCurrent(.cleared, pose) }
     mutating func skipCurrent(from pose: Pose?) { setCurrent(.skipped, pose) }
@@ -129,6 +180,7 @@ struct MissionPlanner {
     private mutating func setCurrent(_ s: MissionTarget.Status, _ pose: Pose?) {
         guard let c = current, let i = targets.firstIndex(where: { $0.id == c.id }) else { return }
         targets[i].status = s
+        lockedID = nil  // checked in (or skipped): the next target gets locked when navigation continues
         if s == .skipped, !targets.contains(where: { $0.status == .pending }) {
             // everything left was skipped: start the skipped ones over
             for j in targets.indices where targets[j].status == .skipped && j != i { targets[j].status = .pending }
@@ -136,7 +188,7 @@ struct MissionPlanner {
         rank(from: pose)
     }
 
-    mutating func reset() { targets = [] }
+    mutating func reset() { targets = []; lockedID = nil }
 }
 
 /// Plain-language steering instruction for the turn needed (radians, + = right).

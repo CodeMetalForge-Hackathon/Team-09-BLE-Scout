@@ -51,3 +51,10 @@ drop policy if exists "fleet can read relays" on public.relays;
 create policy "fleet can read relays" on public.relays
   for select to anon using (true);
 grant insert, select on public.relays to anon;
+
+-- ---------------------------------------------------------------------------
+-- Dispatch: the ground station picks a target and sends one phone (the rescuer) to it.
+-- Stored as a relay row with kind = 'dispatch' and to_phone = the rescuer.
+alter table public.relays add column if not exists kind text not null default 'relay';
+alter table public.relays add column if not exists to_phone text;
+alter table public.relays add column if not exists target_names jsonb;

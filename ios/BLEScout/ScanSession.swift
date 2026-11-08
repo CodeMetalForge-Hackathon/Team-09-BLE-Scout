@@ -22,10 +22,11 @@ final class ScanSession: ObservableObject {
     @Published private(set) var nearby: [NearbyDevice] = []
     @Published private(set) var namedHeard = 0
     @Published private(set) var unnamedIgnored = 0   // unnamed devices heard (ignored unless included)
-    /// Also map devices that don't broadcast a name (many phones). Re-analyses the whole scan when flipped.
-    @Published var includeUnnamed = false { didSet { if includeUnnamed != oldValue { reanalyze(); refreshNearby() } } }
+    /// Devices that don't broadcast a name are counted but not mapped (they can't be relayed or
+    /// matched across phones). The switch was removed from the UI; flip here to include them.
+    let includeUnnamed = false
     @Published var params = LocalizerParams()
-    @Published var screen: Screen = .scan
+    @Published var screen: Screen = .scan { didSet { if screen == .mission { mission.lockCurrent() } } }
     @Published private(set) var mission = MissionPlanner()
     @Published private(set) var arrivedTargetID: UUID?
     @Published private(set) var targetSignal: TargetSignal?
@@ -69,6 +70,7 @@ final class ScanSession: ObservableObject {
         tracker.onStatus = { [weak self] s in Task { @MainActor in self?.trackingStatus = s } }
         scanner.onSample = { [weak self] s in Task { @MainActor in self?.add(sample: s) } }
         scanner.onStatus = { [weak self] s in Task { @MainActor in self?.bluetoothStatus = s } }
+        relays.onDispatch = { [weak self] r in self?.receiveDispatch(r) }
     }
 
     // MARK: - Control
@@ -108,6 +110,7 @@ final class ScanSession: ObservableObject {
 
     private func begin() {
         running = true
+        if let d = pendingDispatch { DispatchQueue.main.async { [weak self] in self?.applyDispatch(d) } }
         UIApplication.shared.isIdleTimerDisabled = true // keep the screen on while walking
         scanner.start()
         analysisTask?.cancel()
@@ -206,6 +209,29 @@ final class ScanSession: ObservableObject {
     // MARK: - Signal relay
 
     @Published private(set) var relayStatus: String?
+    /// Set when the ground station picked this phone as the rescuer.
+    @Published var dispatchNotice: RelayMessage?
+    private var pendingDispatch: RelayMessage?
+
+    /// Ground station → "you're the rescuer": go straight to Mission (now, or as soon as scanning starts).
+    func receiveDispatch(_ r: RelayMessage) {
+        dispatchNotice = r
+        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+        if running { applyDispatch(r) } else { pendingDispatch = r }
+    }
+
+    private func applyDispatch(_ r: RelayMessage) {
+        pendingDispatch = nil
+        let names = Set(r.names)
+        let ownIDs = Set((result?.devices ?? []).filter { names.contains($0.name) }.map(\.id))
+        mission.setRelayTarget(name: r.names.joined(separator: " · "), x: r.target_x, y: r.target_y,
+                               radius: r.target_radius ?? 2,
+                               note: "Dispatched by the ground station" + (r.chain.isEmpty ? "" : " · via \(r.chain.map(\.name).joined(separator: " → "))"),
+                               deviceIDs: ownIDs, from: current)
+        mission.setRelayNames(r.names)
+        arrivedTargetID = nil
+        screen = .mission
+    }
 
     /// Our current estimate for one of the devices we've heard (by our own device id).
     func fix(for deviceID: String) -> DeviceFix? {
@@ -249,10 +275,12 @@ final class ScanSession: ObservableObject {
             relayStatus = "Start (or resume) scanning first, so the app knows where you are."
             return
         }
-        let ownIDs = Set((result?.devices ?? []).filter { $0.name == r.target_name }.map(\.id))
+        let wanted = Set(r.names)
+        let ownIDs = Set((result?.devices ?? []).filter { wanted.contains($0.name) }.map(\.id))
         let note = "Relayed from \(r.originName) through \(r.chain.count) phone\(r.chain.count == 1 ? "" : "s")"
         mission.setRelayTarget(name: r.target_name, x: r.target_x, y: r.target_y, radius: r.target_radius ?? 2,
                                note: note, deviceIDs: ownIDs, from: current)
+        mission.setRelayNames(r.names)
         arrivedTargetID = nil
         relays.dismissed.insert(r.id)
         screen = .mission
@@ -344,6 +372,7 @@ final class ScanSession: ObservableObject {
     }
 
     private func afterTargetChange() {
+        if screen == .mission { mission.lockCurrent() } // continue straight on to the next one
         spinning = false
         spinOutcome = nil
         arrivedTargetID = nil
@@ -406,10 +435,18 @@ final class ScanSession: ObservableObject {
                                heat: Localizer.heat(from: fixes, poses: p) ?? fresh.heat)
         result = r
         mission.update(with: r.clusters, from: current)
+        if screen == .mission { mission.lockCurrent() }
         // A relayed target we can now hear ourselves (matched by name): use our own fix.
-        if let rt = mission.relayTarget, let name = rt.names.first,
-           let mine = fixes.first(where: { $0.name == name && $0.status.isPlaced }) {
-            mission.refineRelayTarget(x: mine.x, y: mine.y, radius: mine.radius, deviceIDs: [mine.id])
+        if let rt = mission.relayTarget {
+            let wanted = Set(rt.matchNames)
+            let mine = fixes.filter { wanted.contains($0.name) && $0.status.isPlaced }
+            if let best = mine.min(by: { ($0.status.rank, -$0.radius) > ($1.status.rank, -$1.radius) }) {
+                // several devices of the target heard here: centre on them, report the best precision
+                let cx = mine.map(\.x).reduce(0, +) / Double(mine.count)
+                let cy = mine.map(\.y).reduce(0, +) / Double(mine.count)
+                mission.refineRelayTarget(x: mine.count > 1 ? cx : best.x, y: mine.count > 1 ? cy : best.y,
+                                          radius: best.radius, deviceIDs: Set(mine.map(\.id)))
+            }
         }
     }
 

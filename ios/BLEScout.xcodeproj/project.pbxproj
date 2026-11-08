@@ -17,6 +17,7 @@
 		45C0F6ACB625B4E03B51F7D2 /* MapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 631602BC3067CB5AFC19699A /* MapView.swift */; };
 		4AC0246CA5C0D82C2F647882 /* MissionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06FC9D17274C4DC16D4AAB96 /* MissionView.swift */; };
 		4DF26ADFB6126818307956D9 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = FFF58058408DE89591155A52 /* Assets.xcassets */; };
+		54AF2465FD064BB9FBD30183 /* LockTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 636DECC365944052BD1CC41D /* LockTests.swift */; };
 		5B4B6F26696334F162376532 /* RelayViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBCEC552881156D9EB2D662B /* RelayViews.swift */; };
 		6E4F43C1202DBF149E6FC3E7 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13E3BC089679323857863E2D /* ContentView.swift */; };
 		913AF6476FF03CF54ED11581 /* PersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1697EC14865A197188D5E6 /* PersistenceTests.swift */; };
@@ -53,6 +54,7 @@
 		4A0069AD32A25BE09707F925 /* StalenessTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StalenessTests.swift; sourceTree = "<group>"; };
 		5F9D9C22D18E99AC8F7E88A6 /* SensitivityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SensitivityTests.swift; sourceTree = "<group>"; };
 		631602BC3067CB5AFC19699A /* MapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapView.swift; sourceTree = "<group>"; };
+		636DECC365944052BD1CC41D /* LockTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockTests.swift; sourceTree = "<group>"; };
 		693E8B49F94C5F0DBE671A80 /* BLEScoutTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = BLEScoutTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		6FD201F726B882E9873BF99E /* Types.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Types.swift; sourceTree = "<group>"; };
 		72BC233DDD8E07C835331719 /* GroundViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroundViews.swift; sourceTree = "<group>"; };
@@ -150,6 +152,7 @@
 			children = (
 				F85092D6E3E3AB878643C79C /* GroundBatchTests.swift */,
 				DB9256FCCFC53D7D7123F95B /* LocalizerTests.swift */,
+				636DECC365944052BD1CC41D /* LockTests.swift */,
 				44BB7FE75E56EBF29A2F2BB7 /* MissionTests.swift */,
 				BB1697EC14865A197188D5E6 /* PersistenceTests.swift */,
 				EF21AAE26FEF37F425BA51BF /* RelayTests.swift */,
@@ -280,6 +283,7 @@
 			files = (
 				BF0CE5E6217CC0777C863689 /* GroundBatchTests.swift in Sources */,
 				E012AFE14EDABFED04EEA22A /* LocalizerTests.swift in Sources */,
+				54AF2465FD064BB9FBD30183 /* LockTests.swift in Sources */,
 				132E27DF4A209649BB2C21FA /* MissionTests.swift in Sources */,
 				913AF6476FF03CF54ED11581 /* PersistenceTests.swift in Sources */,
 				1532ACABC01E38BE2C0F1B82 /* RelayTests.swift in Sources */,
@@ -336,7 +340,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 12;
+				CURRENT_PROJECT_VERSION = 14;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = P2Y69G87UF;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -396,7 +400,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 12;
+				CURRENT_PROJECT_VERSION = 14;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = P2Y69G87UF;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;

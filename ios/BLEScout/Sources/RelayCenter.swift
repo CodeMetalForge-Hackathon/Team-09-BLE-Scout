@@ -20,6 +20,14 @@ struct RelayMessage: Codable, Identifiable, Equatable {
     let target_radius: Double?
     let hop: Int
     let chain: [Hop]
+    // Dispatch (ground station sends one phone to a target). Optional: older rows lack them.
+    var kind: String? = nil
+    var to_phone: String? = nil
+    var target_names: [String]? = nil
+
+    var isDispatch: Bool { kind == "dispatch" }
+    /// All device names at the target (a dispatched hot spot can hold several).
+    var names: [String] { target_names?.isEmpty == false ? target_names! : [target_name] }
 
     /// Who first picked the signal.
     var originName: String { chain.first?.name ?? from_name ?? "?" }
@@ -33,6 +41,8 @@ final class RelayCenter: ObservableObject {
     @Published private(set) var incoming: [RelayMessage] = []
     @Published private(set) var lastError: String?
     @Published var dismissed = Set<Int>()
+    /// Called when the ground station dispatches *this* phone as the rescuer.
+    var onDispatch: ((RelayMessage) -> Void)?
 
     private let link: GroundLink
     private var lastID = 0
@@ -71,7 +81,7 @@ final class RelayCenter: ObservableObject {
         guard available else { return }
         let team = link.teamCode.trimmingCharacters(in: .whitespaces).uppercased()
         var comps = URLComponents(string: CloudConfig.supabaseURL + "/rest/v1/relays")!
-        var items = [URLQueryItem(name: "select", value: "id,team,from_phone,from_name,target_name,target_x,target_y,target_radius,hop,chain"),
+        var items = [URLQueryItem(name: "select", value: "*"),
                      URLQueryItem(name: "team", value: "eq.\(team)"),
                      URLQueryItem(name: "order", value: "id.asc"),
                      URLQueryItem(name: "limit", value: "200")]
@@ -96,7 +106,12 @@ final class RelayCenter: ObservableObject {
             lastError = nil
             guard !rows.isEmpty else { return }
             lastID = rows.map(\.id).max() ?? lastID
-            for r in rows where r.from_phone != link.phoneID {
+            for r in rows {
+                if r.isDispatch {
+                    if r.to_phone == link.phoneID { onDispatch?(r) } // only the chosen rescuer reacts
+                    continue
+                }
+                guard r.from_phone != link.phoneID else { continue }
                 incoming.removeAll { $0.target_name == r.target_name } // keep the newest per signal
                 incoming.insert(r, at: 0)
             }

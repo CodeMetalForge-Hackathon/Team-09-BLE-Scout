@@ -16,6 +16,7 @@ struct ContentView: View {
                 .pickerStyle(.segmented)
                 .padding(.horizontal).padding(.bottom, 8)
             }
+            DispatchBanner()
             RelayStatusLine(text: session.relayStatus)
             RelayCard(relays: session.relays)
             switch session.screen {
@@ -98,10 +99,9 @@ struct ScanView: View {
                 HStack {
                     stat("\(session.namedHeard)", "named devices")
                     stat("\(session.result?.clusters.count ?? 0)", "hot spots")
-                    stat("\(session.unnamedIgnored)", session.includeUnnamed ? "unnamed (included)" : "unnamed (ignored)")
+                    stat("\(session.unnamedIgnored)", "unnamed (ignored)")
                 }
                 .padding(.horizontal)
-                unnamedToggle.padding(.horizontal).padding(.top, 6)
                 Picker("", selection: $tab) {
                     ForEach(Tab.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                 }
@@ -135,20 +135,8 @@ struct ScanView: View {
         .frame(maxWidth: .infinity)
     }
 
-    private var unnamedToggle: some View {
-        Toggle(isOn: $session.includeUnnamed) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text("Include unnamed devices").font(.subheadline)
-                Text("Many phones don't broadcast a name. Adds more devices, but more noise and duplicates.")
-                    .font(.caption2).foregroundStyle(.secondary)
-            }
-        }
-        .tint(.orange)
-    }
-
     private var intro: some View {
         VStack(alignment: .leading, spacing: 14) {
-            unnamedToggle.padding(.bottom, 4)
             Label("Stand at your start point, facing into the area, and tap Start.", systemImage: "1.circle.fill")
             Label("Walk slowly on any route, holding the phone upright with the back camera uncovered. It's only used for tracking; nothing is shown or saved.", systemImage: "2.circle.fill")
             Label("Hot spots (places with several Bluetooth devices) appear on the map as you go, and stay there when you walk away.", systemImage: "3.circle.fill")

@@ -30,6 +30,9 @@
   .zoombar { position:absolute; right:28px; top:28px; display:flex; flex-direction:column; gap:6px; }
   .zoombar button { width:44px; padding:6px 0; font-size:16px; background:#171c23ee; }
   .zoombar button:hover { border-color:var(--accent); }
+  button.send { background:#ff5a5a; border-color:#ff5a5a; color:#fff; font-weight:600; }
+  button.send:disabled { opacity:.4; cursor:default; }
+  button.mini { padding:1px 8px; font-size:11px; margin-left:6px; }
   .legend { position:absolute; left:28px; bottom:24px; font-size:12px; color:var(--muted); background:#0e1217cc; padding:6px 10px; border-radius:6px; }
   .empty { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:var(--muted); text-align:center; pointer-events:none; }
   .check { display:flex; align-items:center; gap:8px; cursor:pointer; color:var(--text); padding:4px 0; }
@@ -60,6 +63,16 @@
   <div class="url" id="url">…</div>
   <div class="sub">In BLE Scout, tap the 📡 line: <b>Cloud</b> with the team code above works over any internet connection; <b>Local Wi-Fi</b> finds this Mac on the same network.</div>
   <div class="sub" style="margin-top:6px">⚠️ Everyone should press Start standing on the <b>same mark</b>, facing the <b>same way</b>, so the maps line up.</div>
+
+  <h2>Dispatch a rescuer</h2>
+  <div class="card" style="--c:#ff5a5a">
+    <div class="sub">1. Pick a <b>target</b>: click a hot spot on the map, or <b>Target</b> in the list below.<br>
+      2. Pick the <b>rescuer</b>: click a phone on the map, or <b>Rescuer</b> on its card.</div>
+    <div style="margin:8px 0"><b>Target:</b> <span id="selTarget" class="sub">none</span><br>
+      <b>Rescuer:</b> <span id="selRescuer" class="sub">none</span></div>
+    <button id="sendBtn" class="send" onclick="sendRescuer()" disabled>🚨 Send rescuer</button>
+    <span id="sendMsg" class="sub"></span>
+  </div>
 
   <h2>Signal relays</h2>
   <div id="relays" class="sub">None yet.</div>
@@ -191,6 +204,33 @@ const cv = $('map'), ctx = cv.getContext('2d');
 
 // ---------- zoom & pan: scroll/pinch to zoom at the cursor, drag to pan, double-click to fit ----------
 const view = { zoom: 1, panX: 0, panY: 0 };
+
+// ---------- dispatch: pick a target + a rescuer, then send ----------
+const sel = { target: null, rescuer: null };  // target: {x, y, names, count, radius}; rescuer: phone id
+let hits = [];                                // clickable things drawn this frame (screen coords)
+let spotList = [];                            // hot spots as listed in the sidebar
+function pickSpot(i) { const h = spotList[i]; if (h) sel.target = {x: h.x, y: h.y, names: h.names || [], count: h.count, radius: (h.spread || 1) + (h.uncertainty || 0.5)}; render(); }
+function pickPhone(id) { sel.rescuer = id; render(); }
+async function sendRescuer() {
+  const msg = $('sendMsg');
+  if (!sel.target || !sel.rescuer) return;
+  msg.textContent = ' sending…';
+  try {
+    const r = await fetch('/api/dispatch', {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({phoneId: sel.rescuer, target: sel.target})});
+    msg.textContent = r.ok ? ' ✓ sent. The phone switches to Mission within a few seconds.' : ' ✗ ' + await r.text();
+  } catch (e) { msg.textContent = ' ✗ ' + e; }
+}
+function mapClick(mx, my) {
+  let best = null, bestD = 1e9;
+  for (const h of hits) {
+    const d = Math.hypot(mx - h.sx, my - h.sy) - (h.r || 14);
+    if (d < bestD) { bestD = d; best = h; }
+  }
+  if (!best || bestD > 12) return;
+  if (best.kind === 'phone') sel.rescuer = best.id; else sel.target = best.target;
+  render();
+}
 function zoomAt(mx, my, factor) {
   const W = cv.clientWidth, H = cv.clientHeight;
   const z2 = Math.min(Math.max(view.zoom * factor, 0.4), 25);
@@ -207,7 +247,8 @@ cv.addEventListener('wheel', e => {
 }, { passive: false });
 const pointers = new Map();
 let pinchDist = 0;
-cv.addEventListener('pointerdown', e => { cv.setPointerCapture(e.pointerId); pointers.set(e.pointerId, [e.clientX, e.clientY]); cv.style.cursor = 'grabbing'; });
+let downAt = null;
+cv.addEventListener('pointerdown', e => { cv.setPointerCapture(e.pointerId); pointers.set(e.pointerId, [e.clientX, e.clientY]); cv.style.cursor = 'grabbing'; if (pointers.size === 1) downAt = [e.clientX, e.clientY]; else downAt = null; });
 cv.addEventListener('pointermove', e => {
   if (!pointers.has(e.pointerId)) return;
   const prev = pointers.get(e.pointerId);
@@ -224,7 +265,12 @@ cv.addEventListener('pointermove', e => {
     pinchDist = d;
   }
 });
-const endPointer = e => { pointers.delete(e.pointerId); if (pointers.size < 2) pinchDist = 0; if (!pointers.size) cv.style.cursor = 'grab'; };
+const endPointer = e => {
+  if (downAt && e.type === 'pointerup' && Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) < 5) {
+    const r = cv.getBoundingClientRect(); mapClick(e.clientX - r.left, e.clientY - r.top);  // a click, not a drag
+  }
+  downAt = null;
+  pointers.delete(e.pointerId); if (pointers.size < 2) pinchDist = 0; if (!pointers.size) cv.style.cursor = 'grab'; };
 cv.addEventListener('pointerup', endPointer); cv.addEventListener('pointercancel', endPointer);
 cv.addEventListener('dblclick', fitView);
 cv.style.cursor = 'grab'; cv.style.touchAction = 'none';
@@ -233,6 +279,7 @@ function draw() {
   if (cv.width !== W * dpr || cv.height !== H * dpr) { cv.width = W * dpr; cv.height = H * dpr; }
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
   if (!S || W < 1 || H < 1) return;
+  hits = [];
   const phones = S.phones;
   $('empty').style.display = phones.length ? 'none' : 'flex';
 
@@ -295,6 +342,10 @@ function draw() {
     // hot spots
     for (const h of p.hotSpots) {
       const [x, y] = P(h.x, h.y), r = Math.max(h.spread * k, 12);
+      hits.push({kind: 'spot', sx: x, sy: y, r, target: {x: h.x, y: h.y, names: h.names || [], count: h.count, radius: (h.spread || 1) + (h.uncertainty || 0.5)}});
+      if (sel.target && Math.hypot(sel.target.x - h.x, sel.target.y - h.y) < 0.05) {
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y, r + 6, 0, 7); ctx.stroke();
+      }
       ctx.setLineDash(h.roughCount === h.count ? [4, 4] : []);
       ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 5;
       ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.stroke();
@@ -316,6 +367,8 @@ function draw() {
     // phone arrow + name
     if (p.pose) {
       const [x, y] = P(p.pose.x, p.pose.y);
+      hits.push({kind: 'phone', id: p.id, sx: x, sy: y, r: 16});
+      if (sel.rescuer === p.id) { ctx.strokeStyle = '#ff5a5a'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y, 20, 0, 7); ctx.stroke(); }
       ctx.save(); ctx.translate(x, y); ctx.rotate(p.pose.heading || 0);
       ctx.beginPath(); ctx.moveTo(0, -13); ctx.lineTo(8, 9); ctx.lineTo(0, 4); ctx.lineTo(-8, 9); ctx.closePath();
       ctx.fillStyle = p.color; ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke(); ctx.restore();
@@ -328,7 +381,27 @@ function draw() {
     ctx.globalAlpha = 1;
   }
   drawRelays(P);
+  drawDispatches(P);
   ctx.textAlign = 'start';
+}
+
+// Dispatches: thick red line from the rescuer to where the ground station sent them
+function drawDispatches(P) {
+  for (const d of S.dispatches || []) {
+    const ph = S.phones.find(p => p.id === d.phoneId);
+    const [tx, ty] = P(d.x, d.y);
+    ctx.save();
+    if (ph && ph.pose) {
+      const [px, py] = P(ph.pose.x, ph.pose.y);
+      ctx.strokeStyle = '#ff5a5a'; ctx.lineWidth = 4; ctx.setLineDash([12, 8]); ctx.lineDashOffset = -performance.now() / 40;
+      ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(tx, ty); ctx.stroke(); ctx.setLineDash([]);
+    }
+    ctx.beginPath(); ctx.arc(tx, ty, 9, 0, 7); ctx.fillStyle = '#ff5a5a'; ctx.fill();
+    ctx.font = '700 13px system-ui'; ctx.textAlign = 'left'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+    const label = `RESCUE → ${(d.names || []).slice(0, 2).join(', ')}`;
+    ctx.strokeText(label, tx + 14, ty + 18); ctx.fillStyle = '#ff8a8a'; ctx.fillText(label, tx + 14, ty + 18);
+    ctx.restore();
+  }
 }
 
 // Signal relays: target (purple star) <- picked by phone 1 -> phone 2 -> ... (animated hop chain)
@@ -367,6 +440,8 @@ function drawRelays(P) {
 }
 
 // ---------- side panel ----------
+// Rebuilding a list only when it changed keeps buttons clickable (a rebuild mid-click loses the click).
+function setHTML(id, html) { const el = $(id); if (el._last !== html) { el.innerHTML = html; el._last = html; } }
 function render() {
   $('url').textContent = S.url || '…';
   $('cloudBox').style.display = S.team ? '' : 'none';
@@ -375,30 +450,37 @@ function render() {
   $('status').textContent = `${online} of ${S.phones.length} phone(s) online · up ${Math.floor(S.uptime / 60)} min`;
   $('session').textContent = 'Raw data: ' + S.sessionDir;
 
-  $('relays').innerHTML = (S.relays || []).length ? S.relays.slice().reverse().map(r => `
+  setHTML('relays', (S.relays || []).length ? S.relays.slice().reverse().map(r => `
     <div class="card" style="--c:#c77dff">
       <div class="row"><b>★ ${esc(r.target)}</b><span class="pill mission">${r.hops + 1} phone${r.hops ? 's' : ''}</span></div>
       <div class="sub">${esc(r.chain.map(h => h.name).join(' → '))}</div>
       <div class="sub">${fromStart(r.x, r.y)} of start · ${Math.round(r.ago)}s ago</div>
-    </div>`).join('') : 'None yet. On a phone: tap a device in Nearby → Relay.';
+    </div>`).join('') : 'None yet. On a phone: tap a device in Nearby → Relay.');
 
-  $('phones').innerHTML = S.phones.length ? S.phones.map(p => `
+  const tgt = sel.target, resc = S.phones.find(p => p.id === sel.rescuer);
+  $('selTarget').textContent = tgt ? `${tgt.count || 1} device(s): ${(tgt.names || []).slice(0, 3).join(', ')} (${fromStart(tgt.x, tgt.y)})` : 'none';
+  $('selRescuer').textContent = resc ? resc.name + (resc.online ? '' : ' (offline!)') : 'none';
+  $('sendBtn').disabled = !(tgt && resc && S.cloud);
+  if (!S.cloud) $('sendMsg').textContent = ' Dispatch needs the cloud relay (groundstation/.env).';
+
+  setHTML('phones', S.phones.length ? S.phones.map(p => `
     <div class="card ${p.online ? '' : 'off'}" style="--c:${p.color}">
-      <div class="row"><b>${esc(p.name)}</b>
+      <div class="row"><b>${esc(p.name)}<button class="mini" onpointerdown="pickPhone('${p.id}')">${sel.rescuer === p.id ? '✓ Rescuer' : 'Rescuer'}</button></b>
         <span class="pill ${p.online ? (p.screen === 'mission' ? 'mission' : 'on') : ''}">${p.online ? (p.running ? (p.screen === 'mission' ? 'on mission' : 'scanning') : 'paused') : 'offline ' + Math.round(p.lastSeenAgo) + 's'}</span></div>
       <div class="sub">${p.stats.named ?? 0} named devices · ${p.hotSpots.length} hot spot(s) · ${p.samplesReceived} readings sent</div>
       ${p.pose ? `<div class="sub">at ${fromStart(p.pose.x, p.pose.y)} of start</div>` : ''}
       ${p.missionTarget ? `<div class="sub" style="color:#ffb020">→ heading to ${esc((p.missionTarget.names || []).slice(0, 3).join(', '))}</div>` : ''}
-    </div>`).join('') : 'None yet.';
+    </div>`).join('') : 'None yet.');
 
   const spots = S.phones.flatMap(p => p.hotSpots.map(h => ({...h, phone: p})))
                         .sort((a, b) => b.count - a.count);
-  $('spots').innerHTML = spots.length ? spots.map(h => `
+  spotList = spots;
+  setHTML('spots', spots.length ? spots.map((h, i) => `
     <div class="spot" style="--c:${h.phone.color}"><span class="dot"></span>
       <div><b>${h.count} device${h.count === 1 ? '' : 's'}</b>${h.roughCount === h.count ? ' <span class="pill">rough</span>' : ''}
-        <span class="sub">· seen by ${esc(h.phone.name)}</span><br>
+        <span class="sub">· seen by ${esc(h.phone.name)}</span><button class="mini" onpointerdown="pickSpot(${i})">Target</button><br>
         <span class="sub">${fromStart(h.x, h.y)} of start · ${esc((h.names || []).slice(0, 4).join(', '))}</span></div>
-    </div>`).join('') : 'None yet.';
+    </div>`).join('') : 'None yet.');
 }
 
 async function refresh() {
