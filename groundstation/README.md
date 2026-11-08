@@ -34,6 +34,8 @@ uv run python fake_phones.py --phones 3     # in a second terminal
 3. Each phone shows "Ground station: connected" while it scans. Set your name in the
    📡 settings so the dashboard can label you.
 4. **Clear map** on the dashboard starts a fresh session.
+5. **Heat map** in the dashboard sidebar toggles a density layer built from every
+   device's hot spots; turn it off to see just paths and hot-spot circles.
 
 ## What's stored
 

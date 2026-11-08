@@ -13,6 +13,9 @@ Configuration (see pi/.env.example):
     PI_ID                  stable device id (default: the Pi's hostname)
     PI_INTERVAL            seconds between uploads (default 2)
     PI_MIN_RSSI            ignore weaker readings (default -95 dBm)
+
+Camera poses (from vision.py) are sent in the same `pose` / `poses` fields the
+phone uses, so the ground station draws the Pi's path like any other device.
 """
 
 from __future__ import annotations
@@ -36,6 +39,7 @@ REPO = HERE.parent
 DEFAULT_ENV_PATHS = (HERE / ".env", REPO / ".env", REPO / "groundstation" / ".env")
 
 PENDING_CAP = 20_000  # keep retrying old readings, but don't grow without bound
+POSE_CAP = 6_000      # ~20 minutes of camera poses while offline
 
 
 class ConfigError(ValueError):
@@ -157,8 +161,11 @@ class Uploader:
         self.pending: list[dict] = []
         self.named: set[str] = set()
         self.unnamed: set[str] = set()
+        self.poses: list[dict] = []
+        self.latest_pose: dict | None = None
         self.sent_batches = 0
         self.sent_samples = 0
+        self.sent_poses = 0
 
     def add(self, address: str, name: str | None, rssi: int, t: float | None = None) -> None:
         """Record one advertisement. `t` is the same monotonic clock as phone samples."""
@@ -185,7 +192,26 @@ class Uploader:
         if len(self.pending) > PENDING_CAP:
             del self.pending[: len(self.pending) - PENDING_CAP]
 
-    def build_batch(self, samples: Sequence[dict]) -> dict:
+    def add_pose(self, t: float, x: float, y: float, heading: float) -> None:
+        """Record one camera pose (metres, radians, monotonic time)."""
+        pose = {"t": round(float(t), 3), "x": round(float(x), 3),
+                "y": round(float(y), 3), "heading": round(float(heading), 4)}
+        self.poses.append(pose)
+        self.latest_pose = pose
+        if len(self.poses) > POSE_CAP:
+            del self.poses[: len(self.poses) - POSE_CAP]
+
+    def take_poses(self) -> list[dict]:
+        poses, self.poses = self.poses, []
+        return poses
+
+    def restore_poses(self, poses: Sequence[dict]) -> None:
+        self.poses = list(poses) + self.poses
+        if len(self.poses) > POSE_CAP:
+            del self.poses[: len(self.poses) - POSE_CAP]
+
+    def build_batch(self, samples: Sequence[dict], poses: Sequence[dict] | None = None,
+                    hot_spots: Sequence[dict] | None = None) -> dict:
         return {
             "v": 1,
             "phoneId": self.cfg.device_id,
@@ -195,14 +221,15 @@ class Uploader:
             "sessionStart": round(self.session_start, 3),
             "running": True,
             "screen": "scan",
-            "pose": None,
-            "poses": [],
+            "pose": self.latest_pose,
+            "poses": list(poses or []),
             "samples": list(samples),
-            "hotSpots": [],
+            "hotSpots": list(hot_spots or []),
             "missionTarget": None,
             "stats": {"named": len(self.named), "unnamed": len(self.unnamed - self.named)},
         }
 
-    def note_sent(self, count: int) -> None:
+    def note_sent(self, count: int, poses: int = 0) -> None:
         self.sent_batches += 1
         self.sent_samples += count
+        self.sent_poses += poses
