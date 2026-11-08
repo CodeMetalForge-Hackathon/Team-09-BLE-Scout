@@ -132,16 +132,19 @@ Measure the ceiling distance with a tape; it has the biggest effect on scale.
 ## Hot spots
 
 The Pi also estimates hot spots from its own walk, so the ground station has
-something to draw without waiting for a phone:
+something to draw without waiting for a phone. It uses the same path-loss model
+as the phone (`ios/BLEScout/Model/Localizer.swift`):
 
 - named-device readings are binned into 0.5 m cells along the camera path;
-- each device is placed at the RSSI-weighted centre of its 3 loudest cells;
+- each device is fitted to `rssi = P0 - 10·n·log10(distance)` on a 0.5 m grid;
+- the best cell gives its position, and the fit's spread gives a confidence radius;
 - devices within 1.5 m are clustered into a hot spot;
-- devices that stay loud everywhere (carried by the operator) are dropped.
+- devices that stay loud everywhere (carried by the operator) are dropped;
+- devices heard in only one cell are not placed.
 
-These placements are marked **rough**: they use the Pi's approximate camera pose
-and a simple centroid, not the phone's full grid fit. No camera poses means no
-hot spots (`--no-camera` sends Bluetooth only).
+Readings below **-90 dBm** are uploaded but ignored for placement. Placements are
+marked `located`, `uncertain` or `rough`; the dashboard draws rough ones dashed.
+No camera poses means no hot spots (`--no-camera` sends Bluetooth only).
 
 ## What it sends
 

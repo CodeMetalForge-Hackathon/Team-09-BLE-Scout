@@ -53,6 +53,10 @@ class VisionConfig:
     still_linear_m: float = 0.001
     still_angle_rad: float = math.radians(0.1)
     pose_hz: float = 5.0
+    # Physical sanity limits: tracking glitches otherwise teleport the path.
+    max_step_m: float = 0.75          # per camera frame
+    max_speed_mps: float = 2.5        # walking/running, not teleporting
+    max_turn_rad: float = math.radians(35)  # per frame
 
     @classmethod
     def from_env(cls, env: Mapping[str, str]) -> "VisionConfig":
@@ -151,13 +155,28 @@ class PoseIntegrator:
         self.x = 0.0
         self.y = 0.0
         self.heading = 0.0
+        self.rejected = 0
+        self._last_t: float | None = None
 
     def pose(self, t: float) -> Pose:
         return Pose(t, self.x, self.y, self.heading)
 
     def update(self, motion: Motion | None, t: float) -> Pose:
+        dt = t - self._last_t if self._last_t is not None else 0.0
+        self._last_t = t
         if motion is None:
             return self.pose(t)
+
+        # Reject physically impossible frame-to-frame motion. A bad feature fit
+        # used to jump the path by 10-20 m; holding the last pose is far better.
+        step = math.hypot(motion.dx, motion.dy)
+        speed = step / dt if dt > 1e-6 else 0.0
+        if (step > self.cfg.max_step_m
+                or speed > self.cfg.max_speed_mps
+                or abs(motion.dtheta) > self.cfg.max_turn_rad):
+            self.rejected += 1
+            return self.pose(t)
+
         still = (abs(motion.dx) < self.cfg.still_linear_m
                  and abs(motion.dy) < self.cfg.still_linear_m
                  and abs(motion.dtheta) < self.cfg.still_angle_rad)
@@ -346,6 +365,8 @@ class CameraPoseTracker:
                         self._status = "searching for surface features"
                     else:
                         self._status = "tracking"
+                        if integrator.rejected:
+                            self._status += f" · {integrator.rejected} jumps skipped"
                     # Integrate on every frame, but only publish poses at pose_hz.
                     pose = integrator.update(motion, now)
                     if motion is not None and now - last_emit >= interval:
