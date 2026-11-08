@@ -16,6 +16,8 @@ import time
 import urllib.request
 import uuid
 
+from station.tls import ssl_context
+
 # A fake building: groups of named devices (people) at fixed spots, metres from the start mark.
 GROUPS = [
     ((3.0, 6.0), ["AirPods Pro", "Apple Watch", "Galaxy Buds2"]),
@@ -85,7 +87,7 @@ def post_cloud(cfg: dict, phone_id: str, name: str, body: dict) -> None:
         headers["Authorization"] = f"Bearer {cfg['key']}"
     req = urllib.request.Request(f"{cfg['url']}/rest/v1/batches", data=json.dumps(row).encode(),
                                  headers=headers, method="POST")
-    urllib.request.urlopen(req, timeout=6).read()
+    urllib.request.urlopen(req, timeout=6, context=ssl_context()).read()
 
 
 def load_env(path: str = ".env") -> dict:

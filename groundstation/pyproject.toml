@@ -5,6 +5,7 @@ description = "Ground station for BLE Scout: phones stream their scans here; a l
 requires-python = ">=3.10"
 dependencies = [
     "aiohttp>=3.9",
+    "certifi>=2024.2.2",
     "zeroconf>=0.130",
 ]
 
