@@ -37,6 +37,15 @@ uv run python fake_phones.py --phones 3     # in a second terminal
 5. **Heat map** in the dashboard sidebar toggles a density layer built from every
    device's hot spots; turn it off to see just paths and hot-spot circles.
 
+## Signal relays and zoom
+
+When a phone relays a signal (see the iOS README), the dashboard draws the chain live:
+the target ★ → the phone that picked it → each phone that forwarded it, and lists it under
+**Signal relays**. The terminal logs every hop. Needs the `relays` table from
+`supabase/schema.sql`.
+
+Map: scroll or pinch to zoom at the cursor, drag to pan, double-click or **Fit** to reset.
+
 ## What's stored
 
 Every batch a phone sends is appended to `sessions/session-<time>/<phone>.jsonl` (raw

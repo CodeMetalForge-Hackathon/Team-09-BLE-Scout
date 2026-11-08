@@ -16,6 +16,8 @@ struct ContentView: View {
                 .pickerStyle(.segmented)
                 .padding(.horizontal).padding(.bottom, 8)
             }
+            RelayStatusLine(text: session.relayStatus)
+            RelayCard(relays: session.relays)
             switch session.screen {
             case .scan: ScanView()
             case .mission: MissionView()
@@ -219,6 +221,7 @@ struct HotSpotListView: View {
                                 Text(why).font(.caption2).foregroundStyle(.secondary)
                             }
                         }
+                        .relayOnTap(deviceID: d.id, name: d.name)
                     }
                 }
             }
@@ -272,6 +275,10 @@ struct NearbyView: View {
                     }
                     SignalBar(rssi: d.rssi)
                 }
+                .relayOnTap(deviceID: d.id, name: d.name)
+            }
+            if !session.nearby.isEmpty {
+                Text("Tap a device to relay its position to the fleet.").font(.caption2).foregroundStyle(.secondary)
             }
         }
         .listStyle(.plain)

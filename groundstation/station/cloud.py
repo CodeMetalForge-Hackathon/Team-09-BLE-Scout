@@ -48,6 +48,42 @@ def auth_headers(key: str) -> dict:
     return h
 
 
+async def poll_relays(cfg: CloudConfig, station: Station, interval: float = 1.0, lookback_min: float = 15) -> None:
+    """Forever: pull new signal relays for our team and hand them to the station."""
+    since = (datetime.now(timezone.utc) - timedelta(minutes=lookback_min)).isoformat()
+    last_id: int | None = None
+    warned = False
+    endpoint = f"{cfg.url}/rest/v1/relays"
+    connector = aiohttp.TCPConnector(ssl=ssl_context())
+    async with aiohttp.ClientSession(headers=auth_headers(cfg.key), connector=connector) as http:
+        while True:
+            params = {"select": "*", "team": f"eq.{cfg.team}", "order": "id.asc", "limit": "200"}
+            if last_id is None:
+                params["created_at"] = f"gte.{since}"
+            else:
+                params["id"] = f"gt.{last_id}"
+            try:
+                async with http.get(endpoint, params=params, timeout=aiohttp.ClientTimeout(total=8)) as r:
+                    if r.status != 200:
+                        raise RuntimeError(f"HTTP {r.status}: {(await r.text())[:160]}")
+                    rows = await r.json()
+                warned = False
+                for row in rows:
+                    last_id = row["id"]
+                    station.add_relay(row)
+                    names = " → ".join(h.get("name", "?") for h in row.get("chain") or [])
+                    print(f"  {time.strftime('%H:%M:%S')}  relay: '{row.get('target_name')}' via {names}"
+                          f" (hop {row.get('hop')})", flush=True)
+                if last_id is None:
+                    last_id = 0
+            except Exception as e:
+                if not warned:
+                    print(f"  {time.strftime('%H:%M:%S')}  relays: can't read from Supabase ({e}); "
+                          f"has the relays table been created? retrying…", flush=True)
+                    warned = True
+            await asyncio.sleep(interval)
+
+
 async def poll_supabase(cfg: CloudConfig, station: Station, interval: float = 1.5, lookback_min: float = 15) -> None:
     """Forever: fetch rows newer than the last one seen and ingest them."""
     since = (datetime.now(timezone.utc) - timedelta(minutes=lookback_min)).isoformat()

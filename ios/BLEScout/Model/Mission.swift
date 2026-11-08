@@ -19,6 +19,9 @@ struct MissionTarget: Identifiable, Equatable {
     var pinX: Double? = nil
     var pinY: Double? = nil
     var pinNote: String? = nil
+    /// A relayed signal from another phone ("find this device"), not one of our own hot spots.
+    var external = false
+    var relayNote: String? = nil
     var count: Int { deviceIDs.count }
     var pinned: Bool { pinX != nil }
     /// Ranking weight: confidently placed devices count 1, rough ones 0.5.
@@ -51,7 +54,7 @@ struct MissionPlanner {
             let devs = Set(c.deviceIDs)
             // the existing target sharing the most devices with this hot spot
             let best = targets.indices
-                .filter { !matched.contains(targets[$0].id) }
+                .filter { !matched.contains(targets[$0].id) && !targets[$0].external }
                 .max { targets[$0].deviceIDs.intersection(devs).count < targets[$1].deviceIDs.intersection(devs).count }
             if let i = best, !targets[i].deviceIDs.isDisjoint(with: devs) {
                 matched.insert(targets[i].id)
@@ -74,7 +77,7 @@ struct MissionPlanner {
         }
         // Pending hot spots that vanished from the analysis (devices merged elsewhere or
         // became uncertain) are dropped; cleared ones stay for the record.
-        targets.removeAll { $0.status != .cleared && !matched.contains($0.id) }
+        targets.removeAll { $0.status != .cleared && !$0.external && !matched.contains($0.id) }
         rank(from: pose)
     }
 
@@ -82,7 +85,7 @@ struct MissionPlanner {
     mutating func rank(from pose: Pose?) {
         let px = pose?.x ?? 0, py = pose?.y ?? 0
         func key(_ t: MissionTarget) -> (Int, Double, Double) {
-            let order = t.status == .pending ? 0 : t.status == .skipped ? 1 : 2
+            let order = t.status == .pending ? (t.external ? -1 : 0) : t.status == .skipped ? 1 : 2
             return (order, -t.score, hypot(t.x - px, t.y - py))
         }
         targets.sort { key($0) < key($1) }
@@ -93,6 +96,29 @@ struct MissionPlanner {
         guard let i = targets.firstIndex(where: { $0.id == id }) else { return }
         targets[i].pinX = x; targets[i].pinY = y; targets[i].pinNote = note
     }
+
+    /// Head for a signal relayed from another phone: goes to the top of the plan.
+    mutating func setRelayTarget(name: String, x: Double, y: Double, radius: Double, note: String,
+                                 deviceIDs: Set<String>, from pose: Pose?) {
+        targets.removeAll { $0.external }
+        targets.append(MissionTarget(id: UUID(), deviceIDs: deviceIDs, names: [name], x: x, y: y,
+                                     spread: 0.5, uncertainty: min(max(radius, 0.5), 3),
+                                     external: true, relayNote: note))
+        rank(from: pose)
+    }
+
+    /// Our own scanner has located the relayed device: use our fix for the last metres.
+    mutating func refineRelayTarget(x: Double, y: Double, radius: Double, deviceIDs: Set<String>) {
+        guard let i = targets.firstIndex(where: { $0.external && $0.status != .cleared }) else { return }
+        targets[i].x = x; targets[i].y = y
+        targets[i].uncertainty = min(max(radius, 0.5), 3)
+        targets[i].deviceIDs = deviceIDs
+        if !(targets[i].relayNote ?? "").contains("heard here") {
+            targets[i].relayNote = (targets[i].relayNote ?? "") + " · now heard here too"
+        }
+    }
+
+    var relayTarget: MissionTarget? { targets.first { $0.external && $0.status != .cleared } }
 
     /// Forget a target entirely (e.g. it was the team's own devices).
     mutating func drop(_ id: UUID) { targets.removeAll { $0.id == id } }

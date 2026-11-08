@@ -68,6 +68,19 @@ position, readings and hot spots to the team's laptop ground station every 2 s. 
 the station automatically on the same Wi-Fi, or you can type its address. Set your name
 there, and use **Test connection** to check. See [`../groundstation/`](../groundstation/).
 
+## Signal relay
+
+Tap a device in **Nearby** (or in the Hot spots tab's device list) → **Relay this signal to
+the fleet**. Every other phone on the team gets a purple card with that device's position
+**relative to itself** ("8.2 m · ahead-left"). It can **Forward** it on (adding itself as a
+hop, and its own fresher fix if it hears the device too), or tap **Find it** to become the
+rescuer: Mission mode puts the relayed signal at the top and guides you there, switching to
+your own fix once your scanner hears it. Relays need **Cloud** mode and go through the
+Supabase `relays` table; phones share one map frame because everyone starts on the same
+mark. Only named devices can be relayed (iOS gives each device a different ID per phone).
+
+Maps: pinch to zoom, drag to pan, double-tap or ⤢ to fit.
+
 ## How it works
 
 - **Position** (`Sources/PoseTracker.swift`): ARKit world tracking (camera + motion

@@ -44,6 +44,7 @@ final class ScanSession: ObservableObject {
 
     let tracker = PoseTracker()
     let link = GroundLink()
+    lazy var relays = RelayCenter(link: link)
     private var sessionStartWall: TimeInterval = 0
     private var sentPoses = 0, sentSamples = 0
     private var syncTask: Task<Void, Never>?
@@ -202,6 +203,68 @@ final class ScanSession: ObservableObject {
         afterTargetChange()
     }
 
+    // MARK: - Signal relay
+
+    @Published private(set) var relayStatus: String?
+
+    /// Our current estimate for one of the devices we've heard (by our own device id).
+    func fix(for deviceID: String) -> DeviceFix? {
+        result?.devices.first { $0.id == deviceID && $0.status.isPlaced }
+    }
+
+    /// Pick a signal we can hear and relay its position to the fleet.
+    func relaySignal(deviceID: String) {
+        guard let f = fix(for: deviceID) else {
+            relayStatus = "That device isn't placed on the map yet. Walk around it a bit first."
+            return
+        }
+        guard f.named else {
+            relayStatus = "Only named devices can be relayed: other phones identify the signal by its name."
+            return
+        }
+        let me = allPoses.last
+        Task {
+            let ok = await relays.send(targetName: f.name, x: f.x, y: f.y, radius: f.radius, chain: [], me: me)
+            relayStatus = ok ? "📡 Relayed \(f.name) to the fleet" : (relays.lastError ?? "Relay failed")
+        }
+    }
+
+    /// Pass a relayed signal on. If we can hear the device ourselves, our own fix goes with it.
+    func forward(_ r: RelayMessage) {
+        var x = r.target_x, y = r.target_y, radius = r.target_radius
+        if let mine = result?.devices.first(where: { $0.name == r.target_name && $0.status.isPlaced }) {
+            x = mine.x; y = mine.y; radius = mine.radius
+        }
+        let me = allPoses.last
+        Task {
+            let ok = await relays.send(targetName: r.target_name, x: x, y: y, radius: radius, chain: r.chain, me: me)
+            relayStatus = ok ? "📡 Forwarded \(r.target_name) (hop \(r.chain.count + 1))" : (relays.lastError ?? "Forward failed")
+            if ok { relays.dismissed.insert(r.id) }
+        }
+    }
+
+    /// Become the rescuer: Mission mode to the relayed signal.
+    func findRelayed(_ r: RelayMessage) {
+        guard running else {
+            relayStatus = "Start (or resume) scanning first, so the app knows where you are."
+            return
+        }
+        let ownIDs = Set((result?.devices ?? []).filter { $0.name == r.target_name }.map(\.id))
+        let note = "Relayed from \(r.originName) through \(r.chain.count) phone\(r.chain.count == 1 ? "" : "s")"
+        mission.setRelayTarget(name: r.target_name, x: r.target_x, y: r.target_y, radius: r.target_radius ?? 2,
+                               note: note, deviceIDs: ownIDs, from: current)
+        arrivedTargetID = nil
+        relays.dismissed.insert(r.id)
+        screen = .mission
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+    }
+
+    /// Vector from us to a relayed signal, in words ("8.2 m · ahead-left").
+    func vectorText(to r: RelayMessage) -> String? {
+        guard let me = current else { return nil }
+        return Direction.describe(from: me, toX: r.target_x, y: r.target_y)
+    }
+
     // MARK: - Ignore ("it's us")
 
     /// Drop devices that belong to the team (or you) for the rest of this scan.
@@ -343,6 +406,11 @@ final class ScanSession: ObservableObject {
                                heat: Localizer.heat(from: fixes, poses: p) ?? fresh.heat)
         result = r
         mission.update(with: r.clusters, from: current)
+        // A relayed target we can now hear ourselves (matched by name): use our own fix.
+        if let rt = mission.relayTarget, let name = rt.names.first,
+           let mine = fixes.first(where: { $0.name == name && $0.status.isPlaced }) {
+            mission.refineRelayTarget(x: mine.x, y: mine.y, radius: mine.radius, deviceIDs: [mine.id])
+        }
     }
 
     // MARK: - Ground station

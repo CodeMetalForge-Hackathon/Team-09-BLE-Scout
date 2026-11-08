@@ -10,7 +10,7 @@ from pathlib import Path
 
 from aiohttp import web
 
-from .cloud import CloudConfig, poll_supabase
+from .cloud import CloudConfig, poll_relays, poll_supabase
 from .server import Station, build_app
 
 SERVICE_TYPE = "_blescout._tcp.local."
@@ -62,6 +62,7 @@ async def serve(args) -> None:
     if cloud:
         station.team = cloud.team
         cloud_task = asyncio.create_task(poll_supabase(cloud, station))
+        relay_task = asyncio.create_task(poll_relays(cloud, station))
     print(f"\n  Ground station dashboard : http://localhost:{args.port}"
           + (f"\n  Cloud relay (Supabase)   : team code {cloud.team}  ({cloud.url})" if cloud else
              "\n  Cloud relay (Supabase)   : off (add groundstation/.env to turn on)")
@@ -75,6 +76,7 @@ async def serve(args) -> None:
     finally:
         if cloud_task:
             cloud_task.cancel()
+            relay_task.cancel()
         if zc:
             await zc.async_unregister_service(info)
             await zc.async_close()
