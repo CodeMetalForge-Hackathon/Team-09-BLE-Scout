@@ -5,9 +5,9 @@ then uploads both to the same Supabase relay the iPhone app uses in **Cloud**
 mode. It is headless: no map, no screen, just a line in the terminal when a
 batch goes out.
 
-The ground station shows the Pi as another device and draws its path as it
-moves. Bluetooth readings are sent exactly like a phone's; no hot-spot analysis
-is done on the Pi.
+The ground station shows the Pi as another device, draws its path, and shows the
+rough hot spots it estimates from its own walk. Bluetooth readings are sent
+exactly like a phone's.
 
 ## Setup on the Pi
 
@@ -40,6 +40,55 @@ Then run it (Bluetooth usually needs root on Raspberry Pi OS):
 
 ```bash
 sudo ~/venv/bin/python pi/upload.py
+```
+
+## Start automatically on boot
+
+Install the systemd service:
+
+```bash
+bash pi/install-service.sh
+```
+
+It runs the uploader as **root** (Bluetooth scanning needs it), starts after
+Bluetooth, and restarts the script if it exits.
+
+This is a system service (`WantedBy=multi-user.target`), so it starts at boot
+**without anyone logging in** and does not need a desktop session. The repo can
+stay in your home directory (for example `/home/user/Team-9`): systemd uses the
+repo path the installer was run from, and root can read it.
+
+If you want it to run as your own user instead:
+
+```bash
+SERVICE_USER=user bash pi/install-service.sh
+```
+
+BLE scanning may fail without root; root is the recommended default. If you try
+a non-root user, add it to the Bluetooth/video groups and check the logs.
+
+```bash
+sudo systemctl status pi-upload
+sudo journalctl -u pi-upload -f
+```
+
+The installer looks for `.venv` in the repo, then `~/venv`, then
+`~/.venv`. If it picks the wrong interpreter:
+
+```bash
+PYTHON="$HOME/venv/bin/python" bash pi/install-service.sh
+```
+
+After changing `pi/.env`, restart it:
+
+```bash
+sudo systemctl restart pi-upload
+```
+
+Stop and disable it with:
+
+```bash
+sudo systemctl disable --now pi-upload
 ```
 
 ## Mount the camera
